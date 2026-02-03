@@ -22,10 +22,6 @@ OPERATOR_SDK_VERSION ?= v1.34.0
 OPM_VERSION ?= v1.23.2
 YQ_VERSION ?= v4.35.2
 
-# Read Grafana Image and Version from go code
-GRAFANA_IMAGE := $(shell grep 'GrafanaImage' controllers/config/operator_constants.go | sed 's/.*"\(.*\)".*/\1/')
-GRAFANA_VERSION := $(shell grep 'GrafanaVersion' controllers/config/operator_constants.go | sed 's/.*"\(.*\)".*/\1/')
-
 # Image URL to use all building/pushing image targets
 REGISTRY ?= ghcr.io
 ORG ?= grafana
@@ -82,7 +78,7 @@ ifeq (,$(shell which yq 2>/dev/null))
 	@{ \
 	set -e ;\
 	mkdir -p $(dir $(YQ)) ;\
-	OSTYPE=$(shell uname | awk '{print tolower($0)}') && ARCH=$(shell go env GOARCH) && \
+	OSTYPE=$(shell uname | awk '{print tolower($$0)}') && ARCH=$(shell go env GOARCH) && \
 	curl -sSLo $(YQ) https://github.com/mikefarah/yq/releases/download/$(YQ_VERSION)/yq_$${OSTYPE}_$${ARCH} ;\
 	chmod +x $(YQ) ;\
 	}
@@ -98,16 +94,11 @@ manifests: yq controller-gen kustomize ## Generate WebhookConfiguration, Cluster
 	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook paths="./..." crd:maxDescLen=0,generateEmbeddedObjectMeta=false output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook paths="./..." crd:maxDescLen=0,generateEmbeddedObjectMeta=false output:crd:artifacts:config=deploy/helm/grafana-operator/crds
 	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook paths="./..." crd output:crd:artifacts:config=config/crd-for-docs-generation
-	yq -i '(select(.kind == "Deployment") | .spec.template.spec.containers[0].env[] | select (.name == "RELATED_IMAGE_GRAFANA")).value="$(GRAFANA_IMAGE):$(GRAFANA_VERSION)"' config/manager/manager.yaml
-
-	# NOTE: As we publish the whole kustomize folder structure (deploy/kustomize) as an OCI arfifact via flux, in kustomization.yaml, we cannot reference files that reside outside of deploy/kustomize. Thus, we need to maintain an additional copy of CRDs and the ClusterRole
-	$(KUSTOMIZE) build config/crd -o deploy/kustomize/base/crds.yaml
-	cp config/rbac/role.yaml deploy/kustomize/base/role.yaml
 
 	# Sync role definitions to helm chart
 	mkdir -p deploy/helm/grafana-operator/files
-	cat config/rbac/role.yaml | yq -r 'del(.rules[] | select (.apiGroups | contains(["route.openshift.io"])))' > deploy/helm/grafana-operator/files/rbac.yaml
-	cat config/rbac/role.yaml | yq -r 'del(.rules[] | select (.apiGroups | contains(["route.openshift.io"]) | not))'  > deploy/helm/grafana-operator/files/rbac-openshift.yaml
+	cat config/rbac/role.yaml | yq -r 'del(.rules[] | select (.apiGroups | contains(["route.openshift.io"])))' > charts/grafana-operator/files/rbac.yaml
+	cat config/rbac/role.yaml | yq -r 'del(.rules[] | select (.apiGroups | contains(["route.openshift.io"]) | not))'  > charts/grafana-operator/files/rbac-openshift.yaml
 
 # Generate API reference documentation
 api-docs: manifests gen-crd-api-reference-docs
