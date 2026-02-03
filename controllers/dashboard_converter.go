@@ -1,4 +1,4 @@
-package converters
+package controllers
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1alpha1"
 	"github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1beta1"
-	ctrl "github.com/monitoring/qubership-grafana-operator-converter/controllers"
 	"github.com/go-logr/logr"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
@@ -21,7 +20,7 @@ const (
 )
 
 // createGrafanaDashboard converts GrafanaDashboard v1alpha1 to v1beta1
-func (c *ctrl.ConverterController) createGrafanaDashboard(dashboard interface{}) {
+func (c *ConverterController) createGrafanaDashboard(dashboard interface{}) {
 	alphaDashboard, ok := dashboard.(*v1alpha1.GrafanaDashboard)
 	if !ok {
 		c.log.Error(fmt.Errorf("type assertion failed"), "cannot cast to v1alpha1 GrafanaDashboard")
@@ -122,7 +121,7 @@ func (c *ConverterController) updateGrafanaDashboard(old, new interface{}) {
 }
 
 // convertGrafanaDashboard creates GrafanaDashboard v1beta1 from GrafanaDashboard v1alpha1
-func (c *ctrl.ConverterController) convertGrafanaDashboard(src *v1alpha1.GrafanaDashboard) (dst *v1beta1.GrafanaDashboard) {
+func (c *ConverterController) convertGrafanaDashboard(src *v1alpha1.GrafanaDashboard) (dst *v1beta1.GrafanaDashboard) {
 	c.log.Info(fmt.Sprintf("%s/%s conversion from %s to %s requested", src.Namespace, src.Name, v1alpha1.GroupVersion.String(), v1beta1.GroupVersion.String()))
 
 	dst = &v1beta1.GrafanaDashboard{

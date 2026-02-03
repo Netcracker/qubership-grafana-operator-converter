@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	discovery2 "k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -142,14 +141,14 @@ func RunManager(ctx context.Context) (err error) {
 		return err
 	}
 
-	var autoDetect autodetect.AutoDetect
-	autoDetect, err = autodetect.New(cfg)
+	var disc *autodetect.ClusterDiscovery
+	disc, err = autodetect.NewClusterDiscovery(cfg)
 	if err != nil {
-		setupLog.Error(err, "failed to setup auto-detect routine")
+		setupLog.Error(err, "failed to setup discovery routine")
 		return err
 	}
 	var isOpenShift bool
-	isOpenShift, err = autoDetect.IsOpenshift()
+	isOpenShift, err = disc.IsOpenshift()
 	if err != nil {
 		setupLog.Error(err, "unable to detect the platform")
 		return err
@@ -159,40 +158,34 @@ func RunManager(ctx context.Context) (err error) {
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
 		IsOpenShift: isOpenShift,
-		Discovery:   discovery2.NewDiscoveryClientForConfigOrDie(cfg),
-		Log:         ctrl.Log.WithName("GrafanaReconciler"),
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Grafana")
 		return err
 	}
 	if err = (&controllers.GrafanaDashboardReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Log:    ctrl.Log.WithName("GrafanaDashboardReconciler"),
-	}).SetupWithManager(mgr, ctx); err != nil {
+	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GrafanaDashboard")
 		return err
 	}
 	if err = (&controllers.GrafanaDatasourceReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Log:    ctrl.Log.WithName("DatasourceReconciler"),
-	}).SetupWithManager(mgr, ctx); err != nil {
+	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GrafanaDatasource")
 		return err
 	}
 	if err = (&controllers.GrafanaFolderReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Log:    ctrl.Log.WithName("GrafanaFolderReconciler"),
-	}).SetupWithManager(mgr, ctx); err != nil {
+	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GrafanaFolder")
 		return err
 	}
 	if err = (&controllers.GrafanaAlertRuleGroupReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Log:    ctrl.Log.WithName("GrafanaAlertRuleGroupReconciler"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GrafanaAlertRuleGroup")
 		return err
@@ -200,8 +193,7 @@ func RunManager(ctx context.Context) (err error) {
 	if err = (&controllers.GrafanaContactPointReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Log:    ctrl.Log.WithName("GrafanaContactPointReconciler"),
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GrafanaContactPoint")
 		return err
 	}

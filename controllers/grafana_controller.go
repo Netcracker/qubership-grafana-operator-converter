@@ -1,4 +1,4 @@
-package controller
+package controllers
 
 import (
 	"bufio"
@@ -76,7 +76,7 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 					AddFunc:    c.createGrafanaDashboard,
 					UpdateFunc: c.updateGrafanaDashboard,
 				}); err != nil {
-					return nil, fmt.Errorf("cannot add grafana datasource handler: %w", err)
+					return nil, fmt.Errorf("cannot add grafana dashboards handler: %w", err)
 				}
 			}
 		}
