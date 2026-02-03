@@ -1,0 +1,27 @@
+version: 2
+updates:
+- package-ecosystem: "github-actions"
+  directory: "/"
+  schedule:
+    interval: "monthly"
+# Go mod bot configurations
+- package-ecosystem: "gomod"
+  directory: "/"
+  schedule:
+    interval: "monthly"
+  groups:
+    k8s.io:
+      patterns:
+      - "k8s.io/*"
+      - "github.com/prometheus-operator/prometheus-operator/*"
+      - "github.com/VictoriaMetrics/operator/*"
+    go.opentelemetry.io:
+      patterns:
+      - "go.opentelemetry.io/*"
+  open-pull-requests-limit: 20
+# Docker bot configurations
+- package-ecosystem: "docker"
+  directories:
+  - "/"
+  schedule:
+    interval: "monthly"
