@@ -40,15 +40,9 @@ jobs:
       fail-fast: false
       matrix:
         component:
-        - name: qubership-monitoring-operator
+        - name: qubership-grafana-operator-converter
           file: Dockerfile
           context: .
-        - name: qubership-monitoring-transfer
-          file: docker-transfer/Dockerfile
-          context: .
-        - name: qubership-monitoring-int-tests
-          file: test/robot-tests/Dockerfile
-          context: test/robot-tests
     runs-on: ubuntu-latest
     name: ${{ matrix.component.name }}
     steps:
