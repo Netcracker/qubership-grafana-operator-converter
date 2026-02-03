@@ -17,7 +17,7 @@ COPY embeds/ embeds/
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o converter main.go
 
 # Use alpine as minimal base image to package the converter binary
-FROM alpine:3.20.3
+FROM alpine:3.23.3
 
 RUN apk add --upgrade \
         busybox \
