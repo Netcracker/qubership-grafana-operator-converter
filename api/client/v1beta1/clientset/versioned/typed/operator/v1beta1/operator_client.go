@@ -20,8 +20,8 @@ package v1beta1
 import (
 	"net/http"
 
-	"github.com/monitoring/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/scheme"
-	v1beta1 "github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1beta1"
+	"github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/scheme"
+	v1beta1 "github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1beta1"
 	rest "k8s.io/client-go/rest"
 )
 

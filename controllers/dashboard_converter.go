@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1alpha1"
-	"github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1beta1"
+	"github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1"
+	"github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1beta1"
 	"github.com/go-logr/logr"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"

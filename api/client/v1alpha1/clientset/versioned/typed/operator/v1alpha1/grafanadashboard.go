@@ -21,8 +21,8 @@ import (
 	"context"
 	"time"
 
-	scheme "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned/scheme"
-	v1alpha1 "github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1alpha1"
+	scheme "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned/scheme"
+	v1alpha1 "github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
