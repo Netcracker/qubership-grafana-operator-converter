@@ -90,8 +90,7 @@ func (c *FakeGrafanas) Create(ctx context.Context, grafana *v1alpha1.Grafana, op
 }
 
 // Update takes the representation of a grafana and updates it. Returns the server's representation of the grafana, and an error, if there is any.
-func (c *FakeGrafanas) Update(ctx context.Context, grafana *v1alpha1
-	.Grafana, opts v1.UpdateOptions) (result *v1alpha1.Grafana, err error) {
+func (c *FakeGrafanas) Update(ctx context.Context, grafana *v1alpha1.Grafana, opts v1.UpdateOptions) (result *v1alpha1.Grafana, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateAction(grafanasResource, c.ns, grafana), &v1alpha1.Grafana{})
 

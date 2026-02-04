@@ -3,8 +3,9 @@
     "ignore": [
         "**/.git/**",
         "**/api/**",
-        "**/charts/*/templates/*/*.yaml",
-        "**/charts/*/templates/*/*/*.yaml",
+        "**/charts/*/crds/*.yaml",
+        "**/charts/*/templates/*.yaml",
+        "**/controllers/**",
         "**/docs/examples/**"
     ]
 }
