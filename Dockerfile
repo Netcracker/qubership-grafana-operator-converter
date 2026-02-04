@@ -19,12 +19,11 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o converte
 # Use alpine as minimal base image to package the converter binary
 FROM alpine:3.23.3
 
-RUN apk add --upgrade \
-        busybox \
-        libretls \
-        openssl \
-        zlib \
-    && rm -rf /var/cache/apk/*
+RUN apk add --no-cache --upgrade \
+        busybox=1.37.0-r9 \
+        libretls=3.8.1-r0 \
+        openssl=3.3.2-r4 \
+        zlib=1.3.1-r2
 
 ENV USER_UID=2001 \
     USER_NAME=converter \

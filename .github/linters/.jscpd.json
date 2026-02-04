@@ -2,6 +2,7 @@
     "threshold": 2,
     "ignore": [
         "**/.git/**",
+        "**/api/**",
         "**/charts/*/templates/*/*.yaml",
         "**/charts/*/templates/*/*/*.yaml",
         "**/docs/examples/**"
