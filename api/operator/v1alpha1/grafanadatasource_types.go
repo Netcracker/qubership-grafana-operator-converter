@@ -307,5 +307,5 @@ func init() {
 
 // Filename returns a unique per namespace key of the datasource
 func (ds *GrafanaDataSource) Filename() string {
-	return fmt.Sprintf("%v_%v.yaml", ds.ObjectMeta.Namespace, strings.ToLower(ds.ObjectMeta.Name))
+	return fmt.Sprintf("%v_%v.yaml", ds.Namespace, strings.ToLower(ds.Name))
 }
