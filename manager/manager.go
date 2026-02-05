@@ -54,8 +54,8 @@ var (
 	pprofAddr    = flag.String("pprof-address", ":9180", "The address the pprof endpoint binds to.")
 
 	enableLeaderElection = flag.Bool("leader-elect", false, "Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
-	kubeconfig           = flag.String("kubeconfig", "", "Path to kubeconfig file (optional, if not set, in-cluster config is used)")
-
+	kubeconfig *string
+	
 	resyncPeriod        = flag.Duration("controller.resyncPeriod", 0, "Configures resync period for grafana CRD converter. Disabled by default")
 	converterConfigPath = flag.String("controller.config", "/opt/grafana-converter/parameters.yaml", "Grafana CRD converter configure.")
 )
@@ -69,6 +69,14 @@ func init() {
 
 	// openshift route API
 	utilruntime.Must(routev1.Install(scheme))
+
+	// kubeconfig flag
+	if existing := flag.Lookup("kubeconfig"); existing == nil {
+		kubeconfig = flag.String("kubeconfig", "", "Path to kubeconfig file (optional, if not set, in-cluster config is used)")
+	} else {
+		v := existing.Value.String()
+		kubeconfig = &v
+	}
 }
 
 func RunManager(ctx context.Context) (err error) {
