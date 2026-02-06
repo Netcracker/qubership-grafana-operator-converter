@@ -11,7 +11,7 @@ leaderElect: false
 watchNamespaces: ""
 
 # -- Sets the WATCH_NAMESPACE_SELECTOR environment variable,
-# it defines which namespaces the operator should be listening for based on label and key value pair added on namespace kind.
+# it defines which namespaces the operator should be listening for based on label and key-value pair added on namespace kind.
 # By default it's all namespaces.
 watchNamespaceSelector: ""
 

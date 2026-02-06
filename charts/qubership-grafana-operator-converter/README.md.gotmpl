@@ -45,7 +45,7 @@ kubectl apply --server-side --force-conflicts -f https://github.com/grafana/graf
 ```
 
 The `--server-side` and `--force-conflict` flags are required to avoid running into issues with the `kubectl.kubernetes.io/last-applied-configuration` annotation.
-By using server side apply, this annotation is not considered. `--force-conflict` allows kubectl to modify fields previously managed by helm.
+By using server-side apply, this annotation is not considered. `--force-conflict` allows kubectl to modify fields previously managed by helm.
 
 ## Development
 

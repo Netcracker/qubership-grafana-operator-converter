@@ -97,8 +97,8 @@ manifests: yq controller-gen kustomize ## Generate WebhookConfiguration, Cluster
 
 	# Sync role definitions to helm chart
 	mkdir -p deploy/helm/grafana-operator/files
-	cat config/rbac/role.yaml | yq -r 'del(.rules[] | select (.apiGroups | contains(["route.openshift.io"])))' > charts/grafana-operator/files/rbac.yaml
-	cat config/rbac/role.yaml | yq -r 'del(.rules[] | select (.apiGroups | contains(["route.openshift.io"]) | not))'  > charts/grafana-operator/files/rbac-openshift.yaml
+	cat config/rbac/role.yaml | yq -r 'del(.rules[] | select (.apiGroups | contains(["route.openshift.io"])))' > charts/qubership-grafana-operator-converter/files/rbac.yaml
+	cat config/rbac/role.yaml | yq -r 'del(.rules[] | select (.apiGroups | contains(["route.openshift.io"]) | not))'  > charts/qubership-grafana-operator-converter/files/rbac-openshift.yaml
 
 # Generate API reference documentation
 api-docs: manifests gen-crd-api-reference-docs
@@ -109,7 +109,7 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 	$(CONTROLLER_GEN) crd:crdVersions={v1} \
 					  object:headerFile="hack/boilerplate.go.txt" \
 					  paths="./api/operator/v1beta1" \
-					  output:artifacts:config=charts/grafana-operator/crds/
+					  output:artifacts:config=charts/qubership-grafana-operator-converter/crds/
 
 .PHONY: vet
 vet: ## Run go vet against code.
