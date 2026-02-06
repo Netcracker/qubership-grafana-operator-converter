@@ -33,6 +33,6 @@ jobs:
         run: |
             mkdir -p charts/qubership-grafana-operator-converter/ci
             ls -la charts charts/qubership-grafana-operator-converter charts/qubership-grafana-operator-converter/ci
-      
+
       - name: Run chart-testing (lint)
         run: ct lint --check-version-increment=false --validate-maintainers=false --target-branch=main --chart-dirs=charts
