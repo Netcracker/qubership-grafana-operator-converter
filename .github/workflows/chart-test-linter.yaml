@@ -30,10 +30,8 @@ jobs:
 
       - name: Copy examples for ct in /charts/qubership-monitoring-operator/ci/
         run: |
-            mkdir -p charts/qubership-monitoring-operator/ci
-            cp docs/examples/deploy-parameters/*.yaml charts/qubership-monitoring-operator/ci/
-            cp docs/examples/deploy-parameters/**/*.yaml charts/qubership-monitoring-operator/ci/
-            ls -la charts charts/qubership-monitoring-operator charts/qubership-monitoring-operator/ci
-
+            mkdir -p charts/qubership-grafana-operator-converter/ci
+            ls -la charts charts/qubership-grafana-operator-converter charts/qubership-grafana-operator-converter/ci
+      
       - name: Run chart-testing (lint)
         run: ct lint --check-version-increment=false --validate-maintainers=false --target-branch=main --chart-dirs=charts

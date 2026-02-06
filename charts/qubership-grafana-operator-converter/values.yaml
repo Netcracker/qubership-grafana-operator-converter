@@ -27,12 +27,12 @@ env: []
   #   value: "myvalue"
 
 image:
-  # -- grafana operator image repository
-  repository: ghcr.io/grafana/grafana-operator
+  # -- grafana operator converter image repository
+  repository: ghcr.io/netcracker/qubership-grafana-operator-converter
   # -- The image pull policy to use in grafana operator container
   pullPolicy: IfNotPresent
   # -- Overrides the image tag whose default is the chart appVersion.
-  tag: ""
+  tag: "main"
 
 # -- image pull secrets
 imagePullSecrets: []
