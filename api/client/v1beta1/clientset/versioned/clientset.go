@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"net/http"
 
-	observabilityv1beta1 "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/typed/operator/v1beta1"
+	observabilityv1beta1 "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/typed/operator/v1beta1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"

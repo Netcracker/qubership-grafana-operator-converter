@@ -81,7 +81,7 @@ func init() {
 
 func (in *GrafanaFolderList) Find(namespace string, name string) *GrafanaFolder {
 	for _, folder := range in.Items {
-		if folder.ObjectMeta.Namespace == namespace && folder.ObjectMeta.Name == name {
+		if folder.Namespace == namespace && folder.Name == name {
 			return &folder
 		}
 	}
@@ -111,7 +111,7 @@ func (in *GrafanaFolder) GetTitle() string {
 		return in.Spec.Title
 	}
 
-	return in.ObjectMeta.Name
+	return in.Name
 }
 
 func (in *GrafanaFolder) GetResyncPeriod() time.Duration {

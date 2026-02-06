@@ -18,7 +18,7 @@ limitations under the License.
 package fake
 
 import (
-	integreatlyv1alpha1 "github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1alpha1"
+	integreatlyv1alpha1 "github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"

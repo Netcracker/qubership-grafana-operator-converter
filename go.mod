@@ -1,4 +1,4 @@
-module github.com/monitoring/qubership-grafana-operator-converter
+module github.com/Netcracker/qubership-grafana-operator-converter
 
 go 1.25.5
 

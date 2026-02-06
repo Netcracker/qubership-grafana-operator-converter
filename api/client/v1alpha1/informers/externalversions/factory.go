@@ -22,9 +22,9 @@ import (
 	sync "sync"
 	time "time"
 
-	versioned "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned"
-	internalinterfaces "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/informers/externalversions/internalinterfaces"
-	operator "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/informers/externalversions/operator"
+	versioned "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned"
+	internalinterfaces "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/informers/externalversions/internalinterfaces"
+	operator "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/informers/externalversions/operator"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"

@@ -6,13 +6,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/grafana/grafana-operator/v5/controllers"
-	"github.com/grafana/grafana-operator/v5/pkg/autodetect"
-	v1alpha1clientset "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned"
-	v1beta1clientset "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned"
-	grafanav1alpha1 "github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1alpha1"
-	grafanav1beta1 "github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1beta1"
-	converterController "github.com/monitoring/qubership-grafana-operator-converter/controllers"
+	v1alpha1clientset "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned"
+	v1beta1clientset "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned"
+	grafanav1alpha1 "github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1"
+	grafanav1beta1 "github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1beta1"
+	converterController "github.com/Netcracker/qubership-grafana-operator-converter/controllers"
 	routev1 "github.com/openshift/api/route/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -54,8 +52,8 @@ var (
 	pprofAddr    = flag.String("pprof-address", ":9180", "The address the pprof endpoint binds to.")
 
 	enableLeaderElection = flag.Bool("leader-elect", false, "Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
-	kubeconfig           = flag.String("kubeconfig", "", "Path to kubeconfig file (optional, if not set, in-cluster config is used)")
-
+	kubeconfig *string
+	
 	resyncPeriod        = flag.Duration("controller.resyncPeriod", 0, "Configures resync period for grafana CRD converter. Disabled by default")
 	converterConfigPath = flag.String("controller.config", "/opt/grafana-converter/parameters.yaml", "Grafana CRD converter configure.")
 )
@@ -69,6 +67,14 @@ func init() {
 
 	// openshift route API
 	utilruntime.Must(routev1.Install(scheme))
+
+	// kubeconfig flag
+	if existing := flag.Lookup("kubeconfig"); existing == nil {
+		kubeconfig = flag.String("kubeconfig", "", "Path to kubeconfig file (optional, if not set, in-cluster config is used)")
+	} else {
+		v := existing.Value.String()
+		kubeconfig = &v
+	}
 }
 
 func RunManager(ctx context.Context) (err error) {
@@ -78,7 +84,7 @@ func RunManager(ctx context.Context) (err error) {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	setupLog.Info("Starting the Grafana Operator and Converter")
+	setupLog.Info("Starting the Grafana Converter")
 
 	// Get Kubernetes config
 	var cfg *rest.Config
@@ -123,78 +129,21 @@ func RunManager(ctx context.Context) (err error) {
 	case watchNamespace != "":
 		// namespace scoped
 		controllerOptions.Cache.DefaultNamespaces = getNamespaceConfig(watchNamespace)
-		setupLog.Info("operator running in namespace scoped mode", "namespace", watchNamespace)
+		setupLog.Info("converter running in namespace scoped mode", "namespace", watchNamespace)
 	case strings.Contains(watchNamespaceSelector, ":"):
 		// namespace scoped
 		controllerOptions.Cache.DefaultNamespaces = getNamespaceConfigSelector(watchNamespaceSelector, cfg)
-		setupLog.Info("operator running in namespace scoped mode using namespace selector", "namespace", watchNamespace)
+		setupLog.Info("converter running in namespace scoped mode using namespace selector", "namespace", watchNamespace)
 
 	case watchNamespace == "" && watchNamespaceSelector == "":
 		// cluster scoped
-		setupLog.Info("operator running in cluster scoped mode")
+		setupLog.Info("converter running in cluster scoped mode")
 	}
 
 	var mgr manager.Manager
 	mgr, err = ctrl.NewManager(cfg, controllerOptions)
 	if err != nil {
 		setupLog.Error(err, "unable to create new manager")
-		return err
-	}
-
-	var disc *autodetect.ClusterDiscovery
-	disc, err = autodetect.NewClusterDiscovery(cfg)
-	if err != nil {
-		setupLog.Error(err, "failed to setup discovery routine")
-		return err
-	}
-	var isOpenShift bool
-	isOpenShift, err = disc.IsOpenshift()
-	if err != nil {
-		setupLog.Error(err, "unable to detect the platform")
-		return err
-	}
-
-	if err = (&controllers.GrafanaReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		IsOpenShift: isOpenShift,
-	}).SetupWithManager(ctx, mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Grafana")
-		return err
-	}
-	if err = (&controllers.GrafanaDashboardReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(ctx, mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "GrafanaDashboard")
-		return err
-	}
-	if err = (&controllers.GrafanaDatasourceReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(ctx, mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "GrafanaDatasource")
-		return err
-	}
-	if err = (&controllers.GrafanaFolderReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "GrafanaFolder")
-		return err
-	}
-	if err = (&controllers.GrafanaAlertRuleGroupReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "GrafanaAlertRuleGroup")
-		return err
-	}
-	if err = (&controllers.GrafanaContactPointReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(ctx, mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "GrafanaContactPoint")
 		return err
 	}
 

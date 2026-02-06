@@ -79,11 +79,11 @@ spec:
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /health
               port: 8081
           readinessProbe:
             httpGet:
-              path: /readyz
+              path: /ready
               port: 8081
           {{- with .Values.resources }}
           resources:

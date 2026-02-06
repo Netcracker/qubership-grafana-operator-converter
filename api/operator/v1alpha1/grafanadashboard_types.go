@@ -124,7 +124,7 @@ func (d *GrafanaDashboard) Hash() string {
 	hash.Write(d.Spec.GzipJson)
 	io.WriteString(hash, d.Spec.Url)              // nolint
 	io.WriteString(hash, d.Spec.Jsonnet)          // nolint
-	io.WriteString(hash, d.ObjectMeta.Namespace)  // nolint
+	io.WriteString(hash, d.Namespace)  // nolint
 	io.WriteString(hash, d.Spec.CustomFolderName) // nolint
 
 	if d.Spec.ConfigMapRef != nil {
@@ -186,7 +186,7 @@ func (d *GrafanaDashboard) UID() string {
 
 	// Use sha1 to keep the hash limit at 40 bytes which is what
 	// Grafana allows for UIDs
-	return fmt.Sprintf("%x", sha1.Sum([]byte(d.ObjectMeta.Namespace+d.ObjectMeta.Name))) // nolint
+	return fmt.Sprintf("%x", sha1.Sum([]byte(d.Namespace+d.Name))) // nolint
 }
 
 func (d *GrafanaDashboard) GetContentCache(url string) string {
@@ -232,6 +232,8 @@ func Gzip(content string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
 	return io.ReadAll(buf)
 }

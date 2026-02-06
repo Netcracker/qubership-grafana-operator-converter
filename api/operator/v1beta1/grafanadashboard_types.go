@@ -281,7 +281,7 @@ func (in *GrafanaDashboard) IsUpdatedUID(uid string) bool {
 	}
 
 	if uid == "" {
-		uid = string(in.ObjectMeta.UID)
+		uid = string(in.UID)
 	}
 
 	return in.Status.UID != uid
@@ -314,7 +314,7 @@ func Gzip(content []byte) ([]byte, error) {
 
 func (in *GrafanaDashboardList) Find(namespace string, name string) *GrafanaDashboard {
 	for _, dashboard := range in.Items {
-		if dashboard.ObjectMeta.Namespace == namespace && dashboard.ObjectMeta.Name == name {
+		if dashboard.Namespace == namespace && dashboard.Name == name {
 			return &dashboard
 		}
 	}

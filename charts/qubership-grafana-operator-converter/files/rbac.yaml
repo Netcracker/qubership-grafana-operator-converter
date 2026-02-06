@@ -54,6 +54,21 @@ rules:
       - patch
       - update
       - watch
+  - verbs:
+      - get
+      - list
+      - watch
+    apiGroups:
+      - integreatly.org
+    resources:
+      - grafananotificationchannels
+      - grafananotificationchannels/status
+      - grafanadashboards
+      - grafanadashboards/status
+      - grafanadatasources
+      - grafanadatasources/status
+      - grafanafolders
+      - grafanafolders/status
   - apiGroups:
       - observability.netcracker.com
     resources:

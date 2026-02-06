@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/monitoring/qubership-grafana-operator-converter/manager"
+	"github.com/Netcracker/qubership-grafana-operator-converter/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	ctrl "sigs.k8s.io/controller-runtime"
 

@@ -18,8 +18,8 @@ limitations under the License.
 package operator
 
 import (
-	internalinterfaces "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1beta1/informers/externalversions/internalinterfaces"
-	v1beta1 "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1beta1/informers/externalversions/operator/v1beta1"
+	internalinterfaces "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/informers/externalversions/internalinterfaces"
+	v1beta1 "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/informers/externalversions/operator/v1beta1"
 )
 
 // Interface provides access to each of this group's versions.
