@@ -4,8 +4,8 @@
 
 # Exclude not required files
 ignore:
-  - .github/*
-  - charts/*
+  - .github/
+  - charts/
 
 rules:
   braces:
