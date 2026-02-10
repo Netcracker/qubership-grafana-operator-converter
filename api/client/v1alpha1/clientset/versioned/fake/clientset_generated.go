@@ -18,9 +18,9 @@ limitations under the License.
 package fake
 
 import (
-	clientset "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned"
-	integreatlyv1alpha1 "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned/typed/operator/v1alpha1"
-	fakeintegreatlyv1alpha1 "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned/typed/operator/v1alpha1/fake"
+	clientset "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned"
+	integreatlyv1alpha1 "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned/typed/operator/v1alpha1"
+	fakeintegreatlyv1alpha1 "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned/typed/operator/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"

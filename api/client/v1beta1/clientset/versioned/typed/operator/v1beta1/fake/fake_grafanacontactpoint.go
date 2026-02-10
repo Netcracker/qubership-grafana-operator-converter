@@ -20,7 +20,7 @@ package fake
 import (
 	"context"
 
-	v1beta1 "github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1beta1"
+	v1beta1 "github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	types "k8s.io/apimachinery/pkg/types"

@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	v1alpha1clientset "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned"
-	v1alpha1informers "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/informers/externalversions"
-	v1beta1clientset "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned"
+	v1alpha1clientset "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned"
+	v1alpha1informers "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/informers/externalversions"
+	v1beta1clientset "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned"
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"

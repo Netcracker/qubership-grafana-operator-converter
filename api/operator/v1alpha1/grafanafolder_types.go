@@ -82,7 +82,7 @@ func (f *GrafanaFolder) Hash() string {
 	hash := sha256.New()
 
 	io.WriteString(hash, f.Spec.FolderName)      // nolint
-	io.WriteString(hash, f.ObjectMeta.Namespace) // nolint
+	io.WriteString(hash, f.Namespace) // nolint
 
 	for _, p := range f.Spec.FolderPermissions {
 		io.WriteString(hash, p.PermissionTarget)            // nolint

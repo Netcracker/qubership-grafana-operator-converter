@@ -11,7 +11,7 @@ func (d *GrafanaDashboard) matchesSelector(s *metav1.LabelSelector) (bool, error
 		return false, err
 	}
 
-	return selector.Empty() || selector.Matches(labels.Set(d.ObjectMeta.Labels)), nil
+	return selector.Empty() || selector.Matches(labels.Set(d.Labels)), nil
 }
 
 // MatchesSelectors check if the dashboard matches at least one of the selectors
@@ -36,7 +36,7 @@ func (d *GrafanaFolder) matchesSelector(s *metav1.LabelSelector) (bool, error) {
 		return false, err
 	}
 
-	return selector.Empty() || selector.Matches(labels.Set(d.ObjectMeta.Labels)), nil
+	return selector.Empty() || selector.Matches(labels.Set(d.Labels)), nil
 }
 
 // MatchesSelectors Check if the dashboard-folder matches at least one of the selectors
@@ -61,7 +61,7 @@ func (d *GrafanaContactPoint) matchesSelector(s *metav1.LabelSelector) (bool, er
 		return false, err
 	}
 
-	return selector.Empty() || selector.Matches(labels.Set(d.ObjectMeta.Labels)), nil
+	return selector.Empty() || selector.Matches(labels.Set(d.Labels)), nil
 }
 
 // MatchesSelectors checks if the contact point matches at least one of the selectors

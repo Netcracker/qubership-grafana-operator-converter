@@ -164,7 +164,7 @@ func (in *GrafanaDatasource) IsUpdatedUID(uid string) bool {
 	}
 
 	if uid == "" {
-		uid = string(in.ObjectMeta.UID)
+		uid = string(in.UID)
 	}
 
 	return in.Status.UID != uid
@@ -199,7 +199,7 @@ func (in *GrafanaDatasource) IsAllowCrossNamespaceImport() bool {
 
 func (in *GrafanaDatasourceList) Find(namespace string, name string) *GrafanaDatasource {
 	for _, datasource := range in.Items {
-		if datasource.ObjectMeta.Namespace == namespace && datasource.ObjectMeta.Name == name {
+		if datasource.Namespace == namespace && datasource.Name == name {
 			return &datasource
 		}
 	}

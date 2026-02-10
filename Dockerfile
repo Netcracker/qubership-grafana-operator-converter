@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.24.3-alpine3.20 as builder
+FROM golang:1.25.5-alpine3.22 AS builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
@@ -11,7 +11,7 @@ COPY go.sum go.sum
 COPY main.go main.go
 #COPY api/ api/
 COPY controllers/ controllers/
-COPY embeds/ embeds/
+COPY manager/ manager/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o converter main.go
@@ -19,12 +19,11 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o converte
 # Use alpine as minimal base image to package the converter binary
 FROM alpine:3.23.3
 
-RUN apk add --upgrade \
-        busybox \
-        libretls \
-        openssl \
-        zlib \
-    && rm -rf /var/cache/apk/*
+RUN apk add --no-cache --upgrade \
+        busybox=1.37.0-r30 \
+        libretls=3.8.1-r0 \
+        openssl=3.5.5-r0 \
+        zlib=1.3.1-r2
 
 ENV USER_UID=2001 \
     USER_NAME=converter \

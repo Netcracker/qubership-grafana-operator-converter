@@ -18,7 +18,7 @@ limitations under the License.
 package fake
 
 import (
-	v1beta1 "github.com/monitoring/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/typed/operator/v1beta1"
+	v1beta1 "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/typed/operator/v1beta1"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )

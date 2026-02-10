@@ -20,7 +20,7 @@ package fake
 import (
 	"context"
 
-	v1beta1 "github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1beta1"
+	v1alpha1 "github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	types "k8s.io/apimachinery/pkg/types"
@@ -30,29 +30,29 @@ import (
 
 // FakeGrafanas implements GrafanaInterface
 type FakeGrafanas struct {
-	Fake *FakeObservabilityV1beta1
+	Fake *FakeIntegreatlyV1alpha1
 	ns   string
 }
 
-var grafanasResource = v1beta1.SchemeGroupVersion.WithResource("grafanas")
+var grafanasResource = v1alpha1.SchemeGroupVersion.WithResource("grafanas")
 
-var grafanasKind = v1beta1.SchemeGroupVersion.WithKind("Grafana")
+var grafanasKind = v1alpha1.SchemeGroupVersion.WithKind("Grafana")
 
 // Get takes name of the grafana, and returns the corresponding grafana object, and an error if there is any.
-func (c *FakeGrafanas) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.Grafana, err error) {
+func (c *FakeGrafanas) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Grafana, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(grafanasResource, c.ns, name), &v1beta1.Grafana{})
+		Invokes(testing.NewGetAction(grafanasResource, c.ns, name), &v1alpha1.Grafana{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1beta1.Grafana), err
+	return obj.(*v1alpha1.Grafana), err
 }
 
 // List takes label and field selectors, and returns the list of Grafanas that match those selectors.
-func (c *FakeGrafanas) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.GrafanaList, err error) {
+func (c *FakeGrafanas) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.GrafanaList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewListAction(grafanasResource, grafanasKind, c.ns, opts), &v1beta1.GrafanaList{})
+		Invokes(testing.NewListAction(grafanasResource, grafanasKind, c.ns, opts), &v1alpha1.GrafanaList{})
 
 	if obj == nil {
 		return nil, err
@@ -62,8 +62,8 @@ func (c *FakeGrafanas) List(ctx context.Context, opts v1.ListOptions) (result *v
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &v1beta1.GrafanaList{ListMeta: obj.(*v1beta1.GrafanaList).ListMeta}
-	for _, item := range obj.(*v1beta1.GrafanaList).Items {
+	list := &v1alpha1.GrafanaList{ListMeta: obj.(*v1alpha1.GrafanaList).ListMeta}
+	for _, item := range obj.(*v1alpha1.GrafanaList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -79,43 +79,43 @@ func (c *FakeGrafanas) Watch(ctx context.Context, opts v1.ListOptions) (watch.In
 }
 
 // Create takes the representation of a grafana and creates it.  Returns the server's representation of the grafana, and an error, if there is any.
-func (c *FakeGrafanas) Create(ctx context.Context, grafana *v1beta1.Grafana, opts v1.CreateOptions) (result *v1beta1.Grafana, err error) {
+func (c *FakeGrafanas) Create(ctx context.Context, grafana *v1alpha1.Grafana, opts v1.CreateOptions) (result *v1alpha1.Grafana, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(grafanasResource, c.ns, grafana), &v1beta1.Grafana{})
+		Invokes(testing.NewCreateAction(grafanasResource, c.ns, grafana), &v1alpha1.Grafana{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1beta1.Grafana), err
+	return obj.(*v1alpha1.Grafana), err
 }
 
 // Update takes the representation of a grafana and updates it. Returns the server's representation of the grafana, and an error, if there is any.
-func (c *FakeGrafanas) Update(ctx context.Context, grafana *v1beta1.Grafana, opts v1.UpdateOptions) (result *v1beta1.Grafana, err error) {
+func (c *FakeGrafanas) Update(ctx context.Context, grafana *v1alpha1.Grafana, opts v1.UpdateOptions) (result *v1alpha1.Grafana, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(grafanasResource, c.ns, grafana), &v1beta1.Grafana{})
+		Invokes(testing.NewUpdateAction(grafanasResource, c.ns, grafana), &v1alpha1.Grafana{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1beta1.Grafana), err
+	return obj.(*v1alpha1.Grafana), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeGrafanas) UpdateStatus(ctx context.Context, grafana *v1beta1.Grafana, opts v1.UpdateOptions) (*v1beta1.Grafana, error) {
+func (c *FakeGrafanas) UpdateStatus(ctx context.Context, grafana *v1alpha1.Grafana, opts v1.UpdateOptions) (*v1alpha1.Grafana, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceAction(grafanasResource, "status", c.ns, grafana), &v1beta1.Grafana{})
+		Invokes(testing.NewUpdateSubresourceAction(grafanasResource, "status", c.ns, grafana), &v1alpha1.Grafana{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1beta1.Grafana), err
+	return obj.(*v1alpha1.Grafana), err
 }
 
 // Delete takes name of the grafana and deletes it. Returns an error if one occurs.
 func (c *FakeGrafanas) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(grafanasResource, c.ns, name, opts), &v1beta1.Grafana{})
+		Invokes(testing.NewDeleteActionWithOptions(grafanasResource, c.ns, name, opts), &v1alpha1.Grafana{})
 
 	return err
 }
@@ -124,17 +124,17 @@ func (c *FakeGrafanas) Delete(ctx context.Context, name string, opts v1.DeleteOp
 func (c *FakeGrafanas) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
 	action := testing.NewDeleteCollectionAction(grafanasResource, c.ns, listOpts)
 
-	_, err := c.Fake.Invokes(action, &v1beta1.GrafanaList{})
+	_, err := c.Fake.Invokes(action, &v1alpha1.GrafanaList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched grafana.
-func (c *FakeGrafanas) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.Grafana, err error) {
+func (c *FakeGrafanas) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Grafana, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(grafanasResource, c.ns, name, pt, data, subresources...), &v1beta1.Grafana{})
+		Invokes(testing.NewPatchSubresourceAction(grafanasResource, c.ns, name, pt, data, subresources...), &v1alpha1.Grafana{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1beta1.Grafana), err
+	return obj.(*v1alpha1.Grafana), err
 }

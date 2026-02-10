@@ -22,10 +22,6 @@ OPERATOR_SDK_VERSION ?= v1.34.0
 OPM_VERSION ?= v1.23.2
 YQ_VERSION ?= v4.35.2
 
-# Read Grafana Image and Version from go code
-GRAFANA_IMAGE := $(shell grep 'GrafanaImage' controllers/config/operator_constants.go | sed 's/.*"\(.*\)".*/\1/')
-GRAFANA_VERSION := $(shell grep 'GrafanaVersion' controllers/config/operator_constants.go | sed 's/.*"\(.*\)".*/\1/')
-
 # Image URL to use all building/pushing image targets
 REGISTRY ?= ghcr.io
 ORG ?= grafana
@@ -82,7 +78,7 @@ ifeq (,$(shell which yq 2>/dev/null))
 	@{ \
 	set -e ;\
 	mkdir -p $(dir $(YQ)) ;\
-	OSTYPE=$(shell uname | awk '{print tolower($0)}') && ARCH=$(shell go env GOARCH) && \
+	OSTYPE=$(shell uname | awk '{print tolower($$0)}') && ARCH=$(shell go env GOARCH) && \
 	curl -sSLo $(YQ) https://github.com/mikefarah/yq/releases/download/$(YQ_VERSION)/yq_$${OSTYPE}_$${ARCH} ;\
 	chmod +x $(YQ) ;\
 	}
@@ -98,16 +94,11 @@ manifests: yq controller-gen kustomize ## Generate WebhookConfiguration, Cluster
 	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook paths="./..." crd:maxDescLen=0,generateEmbeddedObjectMeta=false output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook paths="./..." crd:maxDescLen=0,generateEmbeddedObjectMeta=false output:crd:artifacts:config=deploy/helm/grafana-operator/crds
 	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook paths="./..." crd output:crd:artifacts:config=config/crd-for-docs-generation
-	yq -i '(select(.kind == "Deployment") | .spec.template.spec.containers[0].env[] | select (.name == "RELATED_IMAGE_GRAFANA")).value="$(GRAFANA_IMAGE):$(GRAFANA_VERSION)"' config/manager/manager.yaml
-
-	# NOTE: As we publish the whole kustomize folder structure (deploy/kustomize) as an OCI arfifact via flux, in kustomization.yaml, we cannot reference files that reside outside of deploy/kustomize. Thus, we need to maintain an additional copy of CRDs and the ClusterRole
-	$(KUSTOMIZE) build config/crd -o deploy/kustomize/base/crds.yaml
-	cp config/rbac/role.yaml deploy/kustomize/base/role.yaml
 
 	# Sync role definitions to helm chart
 	mkdir -p deploy/helm/grafana-operator/files
-	cat config/rbac/role.yaml | yq -r 'del(.rules[] | select (.apiGroups | contains(["route.openshift.io"])))' > deploy/helm/grafana-operator/files/rbac.yaml
-	cat config/rbac/role.yaml | yq -r 'del(.rules[] | select (.apiGroups | contains(["route.openshift.io"]) | not))'  > deploy/helm/grafana-operator/files/rbac-openshift.yaml
+	cat config/rbac/role.yaml | yq -r 'del(.rules[] | select (.apiGroups | contains(["route.openshift.io"])))' > charts/qubership-grafana-operator-converter/files/rbac.yaml
+	cat config/rbac/role.yaml | yq -r 'del(.rules[] | select (.apiGroups | contains(["route.openshift.io"]) | not))'  > charts/qubership-grafana-operator-converter/files/rbac-openshift.yaml
 
 # Generate API reference documentation
 api-docs: manifests gen-crd-api-reference-docs
@@ -118,7 +109,7 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 	$(CONTROLLER_GEN) crd:crdVersions={v1} \
 					  object:headerFile="hack/boilerplate.go.txt" \
 					  paths="./api/operator/v1beta1" \
-					  output:artifacts:config=charts/grafana-operator/crds/
+					  output:artifacts:config=charts/qubership-grafana-operator-converter/crds/
 
 .PHONY: vet
 vet: ## Run go vet against code.
@@ -217,23 +208,23 @@ api-gen-v1alpha1: client-gen lister-gen informer-gen
 	$(CLIENT_GEN) \
 		--clientset-name versioned \
 		--input-base "" \
-		--input github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1alpha1 \
-		--output-pkg github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/clientset \
+		--input github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1 \
+		--output-pkg github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset \
 		--output-dir ./api/client/v1alpha1/clientset \
 		--go-header-file hack/boilerplate.go.txt \
 		--v 10
 	@echo ">> generating with lister-gen"
-	$(LISTER_GEN) github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1alpha1 \
+	$(LISTER_GEN) github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1 \
 		--output-dir ./api/client/v1alpha1/listers \
-		--output-pkg github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/listers \
+		--output-pkg github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/listers \
 		--go-header-file hack/boilerplate.go.txt \
 		--v 10
 	@echo ">> generating with informer-gen"
-	$(INFORMER_GEN) github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1alpha1 \
-		--versioned-clientset-package github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned \
-		--listers-package github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/listers \
+	$(INFORMER_GEN) github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1 \
+		--versioned-clientset-package github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned \
+		--listers-package github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/listers \
 		--output-dir ./api/client/v1alpha1/informers \
-		--output-pkg github.com/monitoring/qubership-grafana-operator-converter/api/client/v1alpha1/informers \
+		--output-pkg github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/informers \
 		--go-header-file hack/boilerplate.go.txt \
 		--v 10
 
@@ -244,23 +235,23 @@ api-gen-v1beta1: client-gen lister-gen informer-gen
 	$(CLIENT_GEN) \
 		--clientset-name versioned \
 		--input-base "" \
-		--input github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1beta1 \
-		--output-pkg github.com/monitoring/qubership-grafana-operator-converter/api/client/v1beta1/clientset \
+		--input github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1beta1 \
+		--output-pkg github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset \
 		--output-dir ./api/client/v1beta1/clientset \
 		--go-header-file hack/boilerplate.go.txt \
 		--v 10
 	@echo ">> generating with lister-gen"
-	$(LISTER_GEN) github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1beta1 \
+	$(LISTER_GEN) github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1beta1 \
 		--output-dir ./api/client/v1beta1/listers \
-		--output-pkg github.com/monitoring/qubership-grafana-operator-converter/api/client/v1beta1/listers \
+		--output-pkg github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/listers \
 		--go-header-file hack/boilerplate.go.txt \
 		--v 10
 	@echo ">> generating with informer-gen"
-	$(INFORMER_GEN) github.com/monitoring/qubership-grafana-operator-converter/api/operator/v1beta1 \
-		--versioned-clientset-package github.com/monitoring/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned \
-		--listers-package github.com/monitoring/qubership-grafana-operator-converter/api/client/v1beta1/listers \
+	$(INFORMER_GEN) github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1beta1 \
+		--versioned-clientset-package github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned \
+		--listers-package github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/listers \
 		--output-dir ./api/client/v1beta1/informers \
-		--output-pkg github.com/monitoring/qubership-grafana-operator-converter/api/client/v1beta1/informers \
+		--output-pkg github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/informers \
 		--go-header-file hack/boilerplate.go.txt \
 		--v 10
 
