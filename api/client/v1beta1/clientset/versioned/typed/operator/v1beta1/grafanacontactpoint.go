@@ -56,7 +56,7 @@ type grafanaContactPoints struct {
 }
 
 // newGrafanaContactPoints returns a GrafanaContactPoints
-func newGrafanaContactPoints(c *ObservabilityV1beta1Client, namespace string) *grafanaContactPoints {
+func newGrafanaContactPoints(c *GrafanaIntegreatlyV1beta1Client, namespace string) *grafanaContactPoints {
 	return &grafanaContactPoints{
 		client: c.RESTClient(),
 		ns:     namespace,

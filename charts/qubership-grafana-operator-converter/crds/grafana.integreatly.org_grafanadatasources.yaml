@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.5
-  name: grafanadatasources.observability.netcracker.com
+  name: grafanadatasources.grafana.integreatly.org
 spec:
-  group: observability.netcracker.com
+  group: grafana.integreatly.org
   names:
     kind: GrafanaDatasource
     listKind: GrafanaDatasourceList

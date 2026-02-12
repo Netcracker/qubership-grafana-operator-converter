@@ -56,7 +56,7 @@ type grafanaDatasources struct {
 }
 
 // newGrafanaDatasources returns a GrafanaDatasources
-func newGrafanaDatasources(c *ObservabilityV1beta1Client, namespace string) *grafanaDatasources {
+func newGrafanaDatasources(c *GrafanaIntegreatlyV1beta1Client, namespace string) *grafanaDatasources {
 	return &grafanaDatasources{
 		client: c.RESTClient(),
 		ns:     namespace,

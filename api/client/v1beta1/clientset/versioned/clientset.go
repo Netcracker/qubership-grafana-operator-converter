@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"net/http"
 
-	observabilityv1beta1 "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/typed/operator/v1beta1"
+	grafanaintegreatlyv1beta1 "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/typed/operator/v1beta1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -29,18 +29,18 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	ObservabilityV1beta1() observabilityv1beta1.ObservabilityV1beta1Interface
+	GrafanaIntegreatlyV1beta1() grafanaintegreatlyv1beta1.GrafanaIntegreatlyV1beta1Interface
 }
 
 // Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	observabilityV1beta1 *observabilityv1beta1.ObservabilityV1beta1Client
+	grafanaIntegreatlyV1beta1 *grafanaintegreatlyv1beta1.GrafanaIntegreatlyV1beta1Client
 }
 
-// ObservabilityV1beta1 retrieves the ObservabilityV1beta1Client
-func (c *Clientset) ObservabilityV1beta1() observabilityv1beta1.ObservabilityV1beta1Interface {
-	return c.observabilityV1beta1
+// GrafanaIntegreatlyV1beta1 retrieves the GrafanaIntegreatlyV1beta1Client
+func (c *Clientset) GrafanaIntegreatlyV1beta1() grafanaintegreatlyv1beta1.GrafanaIntegreatlyV1beta1Interface {
+	return c.grafanaIntegreatlyV1beta1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -87,7 +87,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 
 	var cs Clientset
 	var err error
-	cs.observabilityV1beta1, err = observabilityv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	cs.grafanaIntegreatlyV1beta1, err = grafanaintegreatlyv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.observabilityV1beta1 = observabilityv1beta1.New(c)
+	cs.grafanaIntegreatlyV1beta1 = grafanaintegreatlyv1beta1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

@@ -114,7 +114,7 @@ serviceMonitor:
 
 
 # Creates Grafana resources
-# from group integreatly.org version v1alpha1 to group observability.netcracker.com v1beta1
+# from group integreatly.org version v1alpha1 to group grafana.integreatly.org v1beta1
 # Type: object
 # Mandatory: no
 #
