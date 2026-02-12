@@ -56,7 +56,7 @@ type grafanaFolders struct {
 }
 
 // newGrafanaFolders returns a GrafanaFolders
-func newGrafanaFolders(c *ObservabilityV1beta1Client, namespace string) *grafanaFolders {
+func newGrafanaFolders(c *GrafanaIntegreatlyV1beta1Client, namespace string) *grafanaFolders {
 	return &grafanaFolders{
 		client: c.RESTClient(),
 		ns:     namespace,

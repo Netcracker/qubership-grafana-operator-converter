@@ -56,7 +56,7 @@ type grafanaAlertRuleGroups struct {
 }
 
 // newGrafanaAlertRuleGroups returns a GrafanaAlertRuleGroups
-func newGrafanaAlertRuleGroups(c *ObservabilityV1beta1Client, namespace string) *grafanaAlertRuleGroups {
+func newGrafanaAlertRuleGroups(c *GrafanaIntegreatlyV1beta1Client, namespace string) *grafanaAlertRuleGroups {
 	return &grafanaAlertRuleGroups{
 		client: c.RESTClient(),
 		ns:     namespace,

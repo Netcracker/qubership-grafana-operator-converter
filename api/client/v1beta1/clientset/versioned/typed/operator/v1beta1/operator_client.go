@@ -25,7 +25,7 @@ import (
 	rest "k8s.io/client-go/rest"
 )
 
-type ObservabilityV1beta1Interface interface {
+type GrafanaIntegreatlyV1beta1Interface interface {
 	RESTClient() rest.Interface
 	GrafanasGetter
 	GrafanaAlertRuleGroupsGetter
@@ -35,39 +35,39 @@ type ObservabilityV1beta1Interface interface {
 	GrafanaFoldersGetter
 }
 
-// ObservabilityV1beta1Client is used to interact with features provided by the observability.netcracker.com group.
-type ObservabilityV1beta1Client struct {
+// GrafanaIntegreatly is used to interact with features provided by the grafana.integreatly.org group.
+type GrafanaIntegreatlyV1beta1Client struct {
 	restClient rest.Interface
 }
 
-func (c *ObservabilityV1beta1Client) Grafanas(namespace string) GrafanaInterface {
+func (c *GrafanaIntegreatlyV1beta1Client) Grafanas(namespace string) GrafanaInterface {
 	return newGrafanas(c, namespace)
 }
 
-func (c *ObservabilityV1beta1Client) GrafanaAlertRuleGroups(namespace string) GrafanaAlertRuleGroupInterface {
+func (c *GrafanaIntegreatlyV1beta1Client) GrafanaAlertRuleGroups(namespace string) GrafanaAlertRuleGroupInterface {
 	return newGrafanaAlertRuleGroups(c, namespace)
 }
 
-func (c *ObservabilityV1beta1Client) GrafanaContactPoints(namespace string) GrafanaContactPointInterface {
+func (c *GrafanaIntegreatlyV1beta1Client) GrafanaContactPoints(namespace string) GrafanaContactPointInterface {
 	return newGrafanaContactPoints(c, namespace)
 }
 
-func (c *ObservabilityV1beta1Client) GrafanaDashboards(namespace string) GrafanaDashboardInterface {
+func (c *GrafanaIntegreatlyV1beta1Client) GrafanaDashboards(namespace string) GrafanaDashboardInterface {
 	return newGrafanaDashboards(c, namespace)
 }
 
-func (c *ObservabilityV1beta1Client) GrafanaDatasources(namespace string) GrafanaDatasourceInterface {
+func (c *GrafanaIntegreatlyV1beta1Client) GrafanaDatasources(namespace string) GrafanaDatasourceInterface {
 	return newGrafanaDatasources(c, namespace)
 }
 
-func (c *ObservabilityV1beta1Client) GrafanaFolders(namespace string) GrafanaFolderInterface {
+func (c *GrafanaIntegreatlyV1beta1Client) GrafanaFolders(namespace string) GrafanaFolderInterface {
 	return newGrafanaFolders(c, namespace)
 }
 
-// NewForConfig creates a new ObservabilityV1beta1Client for the given config.
+// NewForConfig creates a new GrafanaIntegreatlyV1beta1Client for the given config.
 // NewForConfig is equivalent to NewForConfigAndClient(c, httpClient),
 // where httpClient was generated with rest.HTTPClientFor(c).
-func NewForConfig(c *rest.Config) (*ObservabilityV1beta1Client, error) {
+func NewForConfig(c *rest.Config) (*GrafanaIntegreatlyV1beta1Client, error) {
 	config := *c
 	if err := setConfigDefaults(&config); err != nil {
 		return nil, err
@@ -79,9 +79,9 @@ func NewForConfig(c *rest.Config) (*ObservabilityV1beta1Client, error) {
 	return NewForConfigAndClient(&config, httpClient)
 }
 
-// NewForConfigAndClient creates a new ObservabilityV1beta1Client for the given config and http client.
+// NewForConfigAndClient creates a new GrafanaIntegreatlyV1beta1Client for the given config and http client.
 // Note the http client provided takes precedence over the configured transport values.
-func NewForConfigAndClient(c *rest.Config, h *http.Client) (*ObservabilityV1beta1Client, error) {
+func NewForConfigAndClient(c *rest.Config, h *http.Client) (*GrafanaIntegreatlyV1beta1Client, error) {
 	config := *c
 	if err := setConfigDefaults(&config); err != nil {
 		return nil, err
@@ -90,12 +90,12 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*ObservabilityV1beta
 	if err != nil {
 		return nil, err
 	}
-	return &ObservabilityV1beta1Client{client}, nil
+	return &GrafanaIntegreatlyV1beta1Client{client}, nil
 }
 
-// NewForConfigOrDie creates a new ObservabilityV1beta1Client for the given config and
+// NewForConfigOrDie creates a new GrafanaIntegreatlyV1beta1Client for the given config and
 // panics if there is an error in the config.
-func NewForConfigOrDie(c *rest.Config) *ObservabilityV1beta1Client {
+func NewForConfigOrDie(c *rest.Config) *GrafanaIntegreatlyV1beta1Client {
 	client, err := NewForConfig(c)
 	if err != nil {
 		panic(err)
@@ -103,9 +103,9 @@ func NewForConfigOrDie(c *rest.Config) *ObservabilityV1beta1Client {
 	return client
 }
 
-// New creates a new ObservabilityV1beta1Client for the given RESTClient.
-func New(c rest.Interface) *ObservabilityV1beta1Client {
-	return &ObservabilityV1beta1Client{c}
+// New creates a new GrafanaIntegreatlyV1beta1Client for the given RESTClient.
+func New(c rest.Interface) *GrafanaIntegreatlyV1beta1Client {
+	return &GrafanaIntegreatlyV1beta1Client{c}
 }
 
 func setConfigDefaults(config *rest.Config) error {
@@ -123,7 +123,7 @@ func setConfigDefaults(config *rest.Config) error {
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *ObservabilityV1beta1Client) RESTClient() rest.Interface {
+func (c *GrafanaIntegreatlyV1beta1Client) RESTClient() rest.Interface {
 	if c == nil {
 		return nil
 	}

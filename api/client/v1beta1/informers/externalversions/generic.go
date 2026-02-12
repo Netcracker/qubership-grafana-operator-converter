@@ -51,7 +51,7 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=observability.netcracker.com, Version=v1beta1
+	// Group=grafana.integreatly.org, Version=v1beta1
 	case v1beta1.SchemeGroupVersion.WithResource("grafanas"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Observability().V1beta1().Grafanas().Informer()}, nil
 	case v1beta1.SchemeGroupVersion.WithResource("grafanaalertrulegroups"):

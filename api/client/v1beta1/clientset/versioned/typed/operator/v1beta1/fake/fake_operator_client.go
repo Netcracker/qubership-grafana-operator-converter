@@ -23,37 +23,37 @@ import (
 	testing "k8s.io/client-go/testing"
 )
 
-type FakeObservabilityV1beta1 struct {
+type FakeGrafanaIntegreatlyV1beta1 struct {
 	*testing.Fake
 }
 
-func (c *FakeObservabilityV1beta1) Grafanas(namespace string) v1beta1.GrafanaInterface {
+func (c *FakeGrafanaIntegreatlyV1beta1) Grafanas(namespace string) v1beta1.GrafanaInterface {
 	return &FakeGrafanas{c, namespace}
 }
 
-func (c *FakeObservabilityV1beta1) GrafanaAlertRuleGroups(namespace string) v1beta1.GrafanaAlertRuleGroupInterface {
+func (c *FakeGrafanaIntegreatlyV1beta1) GrafanaAlertRuleGroups(namespace string) v1beta1.GrafanaAlertRuleGroupInterface {
 	return &FakeGrafanaAlertRuleGroups{c, namespace}
 }
 
-func (c *FakeObservabilityV1beta1) GrafanaContactPoints(namespace string) v1beta1.GrafanaContactPointInterface {
+func (c *FakeGrafanaIntegreatlyV1beta1) GrafanaContactPoints(namespace string) v1beta1.GrafanaContactPointInterface {
 	return &FakeGrafanaContactPoints{c, namespace}
 }
 
-func (c *FakeObservabilityV1beta1) GrafanaDashboards(namespace string) v1beta1.GrafanaDashboardInterface {
+func (c *FakeGrafanaIntegreatlyV1beta1) GrafanaDashboards(namespace string) v1beta1.GrafanaDashboardInterface {
 	return &FakeGrafanaDashboards{c, namespace}
 }
 
-func (c *FakeObservabilityV1beta1) GrafanaDatasources(namespace string) v1beta1.GrafanaDatasourceInterface {
+func (c *FakeGrafanaIntegreatlyV1beta1) GrafanaDatasources(namespace string) v1beta1.GrafanaDatasourceInterface {
 	return &FakeGrafanaDatasources{c, namespace}
 }
 
-func (c *FakeObservabilityV1beta1) GrafanaFolders(namespace string) v1beta1.GrafanaFolderInterface {
+func (c *FakeGrafanaIntegreatlyV1beta1) GrafanaFolders(namespace string) v1beta1.GrafanaFolderInterface {
 	return &FakeGrafanaFolders{c, namespace}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *FakeObservabilityV1beta1) RESTClient() rest.Interface {
+func (c *FakeGrafanaIntegreatlyV1beta1) RESTClient() rest.Interface {
 	var ret *rest.RESTClient
 	return ret
 }

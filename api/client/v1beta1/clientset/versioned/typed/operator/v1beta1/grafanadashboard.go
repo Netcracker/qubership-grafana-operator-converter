@@ -56,7 +56,7 @@ type grafanaDashboards struct {
 }
 
 // newGrafanaDashboards returns a GrafanaDashboards
-func newGrafanaDashboards(c *ObservabilityV1beta1Client, namespace string) *grafanaDashboards {
+func newGrafanaDashboards(c *GrafanaIntegreatlyV1beta1Client, namespace string) *grafanaDashboards {
 	return &grafanaDashboards{
 		client: c.RESTClient(),
 		ns:     namespace,
