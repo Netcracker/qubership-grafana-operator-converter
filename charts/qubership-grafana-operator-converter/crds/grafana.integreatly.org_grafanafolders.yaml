@@ -4,6 +4,8 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.5
+    helm.sh/hook: crd-install
+    helm.sh/hook-weight: "-5"
   name: grafanafolders.grafana.integreatly.org
 spec:
   group: grafana.integreatly.org

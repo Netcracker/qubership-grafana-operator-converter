@@ -125,3 +125,7 @@ grafana:
     datasource: true
     folder: true
     notification: true
+    instanceSelector:
+      matchLabels:
+        app.kubernetes.io/component: grafana
+        app.kubernetes.io/part-of: monitoring
