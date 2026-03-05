@@ -30,7 +30,7 @@ import (
 
 // FakeGrafanaDatasources implements GrafanaDatasourceInterface
 type FakeGrafanaDatasources struct {
-	Fake *FakeObservabilityV1beta1
+	Fake *FakeGrafanaIntegreatlyV1beta1
 	ns   string
 }
 

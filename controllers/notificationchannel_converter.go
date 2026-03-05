@@ -35,7 +35,7 @@ func (c *ConverterController) createGrafanaNotificationChannel(nc interface{}) {
 
 	l.Info("start creating GrafanaContactPoint")
 	var createdContactPoint *v1beta1.GrafanaContactPoint
-	createdContactPoint, err = c.v1beta1clientset.ObservabilityV1beta1().GrafanaContactPoints(cp.Namespace).Create(context.Background(), cp, metav1.CreateOptions{})
+	createdContactPoint, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaContactPoints(cp.Namespace).Create(context.Background(), cp, metav1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
 			c.updateGrafanaNotificationChannel(nil, cp)
@@ -87,11 +87,11 @@ func (c *ConverterController) updateGrafanaNotificationChannel(old, new interfac
 	}
 
 	ctx := context.Background()
-	existingContactPoint, err = c.v1beta1clientset.ObservabilityV1beta1().GrafanaContactPoints(contactPoint.Namespace).Get(ctx, contactPoint.Name, metav1.GetOptions{})
+	existingContactPoint, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaContactPoints(contactPoint.Namespace).Get(ctx, contactPoint.Name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			var createdContactPoint *v1beta1.GrafanaContactPoint
-			if createdContactPoint, err = c.v1beta1clientset.ObservabilityV1beta1().GrafanaContactPoints(notificationChannel.Namespace).Create(ctx, contactPoint, metav1.CreateOptions{}); err == nil {
+			if createdContactPoint, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaContactPoints(notificationChannel.Namespace).Create(ctx, contactPoint, metav1.CreateOptions{}); err == nil {
 				l.Info(fmt.Sprintf("GrafanaContactPoint %v/%v uid:%v has been created",
 					createdContactPoint.GetNamespace(),
 					createdContactPoint.GetName(),
@@ -114,7 +114,7 @@ func (c *ConverterController) updateGrafanaNotificationChannel(old, new interfac
 	existingContactPoint.OwnerReferences = contactPoint.GetOwnerReferences()
 
 	var updatedContactPoint *v1beta1.GrafanaContactPoint
-	updatedContactPoint, err = c.v1beta1clientset.ObservabilityV1beta1().GrafanaContactPoints(existingContactPoint.Namespace).Update(ctx, existingContactPoint, metav1.UpdateOptions{})
+	updatedContactPoint, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaContactPoints(existingContactPoint.Namespace).Update(ctx, existingContactPoint, metav1.UpdateOptions{})
 	l.Info(fmt.Sprintf("GrafanaContactPoint %v/%v uid:%v has been updated",
 		updatedContactPoint.GetNamespace(),
 		updatedContactPoint.GetName(),

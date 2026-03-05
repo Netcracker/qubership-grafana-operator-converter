@@ -30,7 +30,7 @@ import (
 
 // FakeGrafanaFolders implements GrafanaFolderInterface
 type FakeGrafanaFolders struct {
-	Fake *FakeObservabilityV1beta1
+	Fake *FakeGrafanaIntegreatlyV1beta1
 	ns   string
 }
 

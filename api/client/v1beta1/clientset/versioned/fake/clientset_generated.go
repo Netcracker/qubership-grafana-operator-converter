@@ -19,8 +19,8 @@ package fake
 
 import (
 	clientset "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned"
-	observabilityv1beta1 "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/typed/operator/v1beta1"
-	fakeobservabilityv1beta1 "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/typed/operator/v1beta1/fake"
+	grafanaintegreatlyv1beta1 "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/typed/operator/v1beta1"
+	fakegrafanaintegreatlyv1beta1 "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/typed/operator/v1beta1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
@@ -78,7 +78,7 @@ var (
 	_ testing.FakeClient  = &Clientset{}
 )
 
-// ObservabilityV1beta1 retrieves the ObservabilityV1beta1Client
-func (c *Clientset) ObservabilityV1beta1() observabilityv1beta1.ObservabilityV1beta1Interface {
-	return &fakeobservabilityv1beta1.FakeObservabilityV1beta1{Fake: &c.Fake}
+// GrafanaIntegreatlyV1beta1 retrieves the GrafanaIntegreatlyV1beta1Client
+func (c *Clientset) GrafanaIntegreatlyV1beta1() grafanaintegreatlyv1beta1.GrafanaIntegreatlyV1beta1Interface {
+	return &fakegrafanaintegreatlyv1beta1.FakeGrafanaIntegreatlyV1beta1{Fake: &c.Fake}
 }

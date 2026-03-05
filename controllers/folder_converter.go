@@ -28,7 +28,7 @@ func (c *ConverterController) createGrafanaFolder(folder interface{}) {
 	cr := c.convertGrafanaFolder(alphaFolder)
 
 	l.Info("start creating GrafanaFolder")
-	betaFolder, err := c.v1beta1clientset.ObservabilityV1beta1().GrafanaFolders(cr.Namespace).Create(context.Background(), cr, metav1.CreateOptions{})
+	betaFolder, err := c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaFolders(cr.Namespace).Create(context.Background(), cr, metav1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
 			c.updateGrafanaFolder(nil, cr)
@@ -74,11 +74,11 @@ func (c *ConverterController) updateGrafanaFolder(old, new interface{}) {
 	}
 
 	ctx := context.Background()
-	existingFolder, err := c.v1beta1clientset.ObservabilityV1beta1().GrafanaFolders(v1beta1Folder.Namespace).Get(ctx, v1beta1Folder.Name, metav1.GetOptions{})
+	existingFolder, err := c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaFolders(v1beta1Folder.Namespace).Get(ctx, v1beta1Folder.Name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			var createdFolder *v1beta1.GrafanaFolder
-			if createdFolder, err = c.v1beta1clientset.ObservabilityV1beta1().GrafanaFolders(v1beta1Folder.Namespace).Create(ctx, v1beta1Folder, metav1.CreateOptions{}); err == nil {
+			if createdFolder, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaFolders(v1beta1Folder.Namespace).Create(ctx, v1beta1Folder, metav1.CreateOptions{}); err == nil {
 				l.Info(fmt.Sprintf("GrafanaDashboard %v/%v uid:%v has been created",
 					createdFolder.GetNamespace(),
 					createdFolder.GetName(),
@@ -101,7 +101,7 @@ func (c *ConverterController) updateGrafanaFolder(old, new interface{}) {
 	existingFolder.OwnerReferences = v1beta1Folder.GetOwnerReferences()
 
 	var updatedFolder *v1beta1.GrafanaFolder
-	updatedFolder, err = c.v1beta1clientset.ObservabilityV1beta1().GrafanaFolders(existingFolder.Namespace).Update(ctx, existingFolder, metav1.UpdateOptions{})
+	updatedFolder, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaFolders(existingFolder.Namespace).Update(ctx, existingFolder, metav1.UpdateOptions{})
 	l.Info(fmt.Sprintf("GrafanaFolder %v/%v uid:%v has been updated",
 		updatedFolder.GetNamespace(),
 		updatedFolder.GetName(),

@@ -61,13 +61,13 @@ func NewFilteredGrafanaFolderInformer(client versioned.Interface, namespace stri
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.ObservabilityV1beta1().GrafanaFolders(namespace).List(context.TODO(), options)
+				return client.GrafanaIntegreatlyV1beta1().GrafanaFolders(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.ObservabilityV1beta1().GrafanaFolders(namespace).Watch(context.TODO(), options)
+				return client.GrafanaIntegreatlyV1beta1().GrafanaFolders(namespace).Watch(context.TODO(), options)
 			},
 		},
 		&operatorv1beta1.GrafanaFolder{},
