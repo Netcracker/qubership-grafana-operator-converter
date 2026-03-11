@@ -31,7 +31,7 @@ func (c *ConverterController) createGrafanaDashboard(dashboard interface{}) {
 	cr := c.convertGrafanaDashboard(alphaDashboard)
 
 	l.Info("start creating GrafanaDashboard")
-	betaDashboard, err := c.v1beta1clientset.ObservabilityV1beta1().GrafanaDashboards(cr.Namespace).Create(context.Background(), cr, metav1.CreateOptions{})
+	betaDashboard, err := c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDashboards(cr.Namespace).Create(context.Background(), cr, metav1.CreateOptions{})
 	if err != nil {
 		if apierrs.IsAlreadyExists(err) {
 			c.updateGrafanaDashboard(nil, cr)
@@ -77,11 +77,11 @@ func (c *ConverterController) updateGrafanaDashboard(old, new interface{}) {
 	}
 
 	ctx := context.Background()
-	existingDashboard, err := c.v1beta1clientset.ObservabilityV1beta1().GrafanaDashboards(v1beta1Dashboard.Namespace).Get(ctx, v1beta1Dashboard.Name, metav1.GetOptions{})
+	existingDashboard, err := c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDashboards(v1beta1Dashboard.Namespace).Get(ctx, v1beta1Dashboard.Name, metav1.GetOptions{})
 	if err != nil {
 		if apierrs.IsNotFound(err) {
 			var createdDashboard *v1beta1.GrafanaDashboard
-			if createdDashboard, err = c.v1beta1clientset.ObservabilityV1beta1().GrafanaDashboards(v1beta1Dashboard.Namespace).Create(ctx, v1beta1Dashboard, metav1.CreateOptions{}); err == nil {
+			if createdDashboard, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDashboards(v1beta1Dashboard.Namespace).Create(ctx, v1beta1Dashboard, metav1.CreateOptions{}); err == nil {
 				l.Info(fmt.Sprintf("GrafanaDashboard %v/%v uid:%v has been created",
 					createdDashboard.GetNamespace(),
 					createdDashboard.GetName(),
@@ -110,7 +110,7 @@ func (c *ConverterController) updateGrafanaDashboard(old, new interface{}) {
 	existingDashboard.OwnerReferences = v1beta1Dashboard.OwnerReferences
 
 	var updatedDashboard *v1beta1.GrafanaDashboard
-	updatedDashboard, err = c.v1beta1clientset.ObservabilityV1beta1().GrafanaDashboards(existingDashboard.Namespace).Update(ctx, existingDashboard, metav1.UpdateOptions{})
+	updatedDashboard, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existingDashboard.Namespace).Update(ctx, existingDashboard, metav1.UpdateOptions{})
 	l.Info(fmt.Sprintf("GrafanaDashboard %v/%v uid:%v has been updated",
 		updatedDashboard.GetNamespace(),
 		updatedDashboard.GetName(),

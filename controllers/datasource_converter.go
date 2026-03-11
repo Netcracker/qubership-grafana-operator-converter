@@ -37,7 +37,7 @@ func (c *ConverterController) createGrafanaDatasource(datasource interface{}) {
 	var createdDatasource *v1beta1.GrafanaDatasource
 	for _, cr := range crs {
 		l.Info(fmt.Sprintf("start creating GrafanaDatasource %s/%s", cr.Namespace, cr.Name))
-		createdDatasource, err = c.v1beta1clientset.ObservabilityV1beta1().GrafanaDatasources(cr.Namespace).Create(context.Background(), cr, metav1.CreateOptions{})
+		createdDatasource, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDatasources(cr.Namespace).Create(context.Background(), cr, metav1.CreateOptions{})
 		if err != nil {
 			if apierrors.IsAlreadyExists(err) {
 				c.updateGrafanaDatasource(nil, cr)
@@ -92,11 +92,11 @@ func (c *ConverterController) updateGrafanaDatasource(old, new interface{}) {
 	ctx := context.Background()
 	var existingDatasource *v1beta1.GrafanaDatasource
 	for _, ds := range v1beta1Datasources {
-		existingDatasource, err = c.v1beta1clientset.ObservabilityV1beta1().GrafanaDatasources(ds.Namespace).Get(ctx, ds.Name, metav1.GetOptions{})
+		existingDatasource, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDatasources(ds.Namespace).Get(ctx, ds.Name, metav1.GetOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				var createdDatasource *v1beta1.GrafanaDatasource
-				if createdDatasource, err = c.v1beta1clientset.ObservabilityV1beta1().GrafanaDatasources(ds.Namespace).Create(ctx, ds, metav1.CreateOptions{}); err == nil {
+				if createdDatasource, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDatasources(ds.Namespace).Create(ctx, ds, metav1.CreateOptions{}); err == nil {
 					l.Info(fmt.Sprintf("GrafanaDashboard %v/%v uid:%v has been created",
 						createdDatasource.GetNamespace(),
 						createdDatasource.GetName(),
@@ -119,7 +119,7 @@ func (c *ConverterController) updateGrafanaDatasource(old, new interface{}) {
 		existingDatasource.OwnerReferences = ds.OwnerReferences
 
 		var updatedDatasource *v1beta1.GrafanaDatasource
-		updatedDatasource, err = c.v1beta1clientset.ObservabilityV1beta1().GrafanaDatasources(existingDatasource.Namespace).Update(ctx, existingDatasource, metav1.UpdateOptions{})
+		updatedDatasource, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDatasources(existingDatasource.Namespace).Update(ctx, existingDatasource, metav1.UpdateOptions{})
 		l.Info(fmt.Sprintf("GrafanaDashboard %v/%v uid:%v has been updated",
 			updatedDatasource.GetNamespace(),
 			updatedDatasource.GetName(),

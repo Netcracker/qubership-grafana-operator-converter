@@ -56,7 +56,7 @@ type grafanas struct {
 }
 
 // newGrafanas returns a Grafanas
-func newGrafanas(c *ObservabilityV1beta1Client, namespace string) *grafanas {
+func newGrafanas(c *GrafanaIntegreatlyV1beta1Client, namespace string) *grafanas {
 	return &grafanas{
 		client: c.RESTClient(),
 		ns:     namespace,

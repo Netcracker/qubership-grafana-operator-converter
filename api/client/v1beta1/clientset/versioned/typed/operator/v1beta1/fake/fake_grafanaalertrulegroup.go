@@ -30,7 +30,7 @@ import (
 
 // FakeGrafanaAlertRuleGroups implements GrafanaAlertRuleGroupInterface
 type FakeGrafanaAlertRuleGroups struct {
-	Fake *FakeObservabilityV1beta1
+	Fake *FakeGrafanaIntegreatlyV1beta1
 	ns   string
 }
 

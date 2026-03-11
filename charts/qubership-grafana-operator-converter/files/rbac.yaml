@@ -70,7 +70,7 @@ rules:
       - grafanafolders
       - grafanafolders/status
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanaalertrulegroups
     verbs:
@@ -82,13 +82,13 @@ rules:
       - update
       - watch
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanaalertrulegroups/finalizers
     verbs:
       - update
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanaalertrulegroups/status
     verbs:
@@ -96,7 +96,7 @@ rules:
       - patch
       - update
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanacontactpoints
     verbs:
@@ -108,13 +108,13 @@ rules:
       - update
       - watch
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanacontactpoints/finalizers
     verbs:
       - update
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanacontactpoints/status
     verbs:
@@ -122,7 +122,7 @@ rules:
       - patch
       - update
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanadashboards
     verbs:
@@ -134,13 +134,13 @@ rules:
       - update
       - watch
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanadashboards/finalizers
     verbs:
       - update
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanadashboards/status
     verbs:
@@ -148,7 +148,7 @@ rules:
       - patch
       - update
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanadatasources
     verbs:
@@ -160,13 +160,13 @@ rules:
       - update
       - watch
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanadatasources/finalizers
     verbs:
       - update
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanadatasources/status
     verbs:
@@ -174,7 +174,7 @@ rules:
       - patch
       - update
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanafolders
     verbs:
@@ -186,13 +186,13 @@ rules:
       - update
       - watch
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanafolders/finalizers
     verbs:
       - update
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanafolders/status
     verbs:
@@ -200,7 +200,7 @@ rules:
       - patch
       - update
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanas
     verbs:
@@ -212,13 +212,13 @@ rules:
       - update
       - watch
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanas/finalizers
     verbs:
       - update
   - apiGroups:
-      - observability.netcracker.com
+      - grafana.integreatly.org
     resources:
       - grafanas/status
     verbs:
