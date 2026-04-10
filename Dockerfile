@@ -22,7 +22,7 @@ FROM alpine:3.23.3
 RUN apk add --no-cache --upgrade \
         busybox=1.37.0-r30 \
         libretls=3.8.1-r0 \
-        openssl=3.5.5-r0 \
+        openssl=3.5.6-r0 \
         zlib=1.3.1-r2
 
 ENV USER_UID=2001 \
