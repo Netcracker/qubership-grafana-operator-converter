@@ -107,7 +107,6 @@ api-docs: manifests gen-crd-api-reference-docs
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) crd:crdVersions={v1} \
-					  object:headerFile="hack/boilerplate.go.txt" \
 					  paths="./api/operator/v1beta1" \
 					  output:artifacts:config=charts/qubership-grafana-operator-converter/crds/
 
@@ -211,13 +210,11 @@ api-gen-v1alpha1: client-gen lister-gen informer-gen
 		--input github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1 \
 		--output-pkg github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset \
 		--output-dir ./api/client/v1alpha1/clientset \
-		--go-header-file hack/boilerplate.go.txt \
 		--v 10
 	@echo ">> generating with lister-gen"
 	$(LISTER_GEN) github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1 \
 		--output-dir ./api/client/v1alpha1/listers \
 		--output-pkg github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/listers \
-		--go-header-file hack/boilerplate.go.txt \
 		--v 10
 	@echo ">> generating with informer-gen"
 	$(INFORMER_GEN) github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1 \
@@ -225,7 +222,6 @@ api-gen-v1alpha1: client-gen lister-gen informer-gen
 		--listers-package github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/listers \
 		--output-dir ./api/client/v1alpha1/informers \
 		--output-pkg github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/informers \
-		--go-header-file hack/boilerplate.go.txt \
 		--v 10
 
 .PHONY: api-gen-v1beta1
@@ -238,13 +234,11 @@ api-gen-v1beta1: client-gen lister-gen informer-gen
 		--input github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1beta1 \
 		--output-pkg github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset \
 		--output-dir ./api/client/v1beta1/clientset \
-		--go-header-file hack/boilerplate.go.txt \
 		--v 10
 	@echo ">> generating with lister-gen"
 	$(LISTER_GEN) github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1beta1 \
 		--output-dir ./api/client/v1beta1/listers \
 		--output-pkg github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/listers \
-		--go-header-file hack/boilerplate.go.txt \
 		--v 10
 	@echo ">> generating with informer-gen"
 	$(INFORMER_GEN) github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1beta1 \
@@ -252,7 +246,6 @@ api-gen-v1beta1: client-gen lister-gen informer-gen
 		--listers-package github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/listers \
 		--output-dir ./api/client/v1beta1/informers \
 		--output-pkg github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/informers \
-		--go-header-file hack/boilerplate.go.txt \
 		--v 10
 
 .PHONY: client-gen
