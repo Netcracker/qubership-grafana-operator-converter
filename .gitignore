@@ -32,7 +32,7 @@ delivery/helm
 target/
 build/_output
 build/_crds
-manager
+bin/manager
 deployments
 
 # python
