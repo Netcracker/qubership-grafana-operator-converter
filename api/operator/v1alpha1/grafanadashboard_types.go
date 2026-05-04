@@ -124,7 +124,7 @@ func (d *GrafanaDashboard) Hash() string {
 	hash.Write(d.Spec.GzipJson)
 	io.WriteString(hash, d.Spec.Url)              // nolint
 	io.WriteString(hash, d.Spec.Jsonnet)          // nolint
-	io.WriteString(hash, d.Namespace)  // nolint
+	io.WriteString(hash, d.Namespace)             // nolint
 	io.WriteString(hash, d.Spec.CustomFolderName) // nolint
 
 	if d.Spec.ConfigMapRef != nil {
