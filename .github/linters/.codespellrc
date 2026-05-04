@@ -1,2 +1,2 @@
 [codespell]
-skip = charts/qubership-grafana-operator-converter/crds
+skip = */crds/*.yaml,go.*
