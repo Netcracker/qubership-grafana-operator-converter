@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/Netcracker/qubership-grafana-operator-converter/manager"
-	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.

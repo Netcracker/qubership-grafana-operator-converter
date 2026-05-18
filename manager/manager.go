@@ -52,8 +52,8 @@ var (
 	pprofAddr    = flag.String("pprof-address", ":9180", "The address the pprof endpoint binds to.")
 
 	enableLeaderElection = flag.Bool("leader-elect", false, "Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
-	kubeconfig *string
-	
+	kubeconfig           *string
+
 	resyncPeriod        = flag.Duration("controller.resyncPeriod", 0, "Configures resync period for grafana CRD converter. Disabled by default")
 	converterConfigPath = flag.String("controller.config", "/opt/grafana-converter/parameters.yaml", "Grafana CRD converter configure.")
 )
