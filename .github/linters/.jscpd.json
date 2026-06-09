@@ -1,0 +1,11 @@
+{
+    "threshold": 3,
+    "ignore": [
+        "**/.git/**",
+        "**/api/**",
+        "**/charts/*/crds/*.yaml",
+        "**/charts/*/templates/*.yaml",
+        "**/controllers/**",
+        "**/docs/examples/**"
+    ]
+}
