@@ -20,10 +20,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o converte
 FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 RUN apk add --no-cache --upgrade \
-        busybox=1.37.0-r30 \
+        busybox=1.37.0-r31 \
         libretls=3.8.1-r0 \
-        openssl=3.5.6-r0 \
-        zlib=1.3.1-r2
+        openssl=3.5.7-r0 \
+        zlib=1.3.2-r0
 
 ENV USER_UID=2001 \
     USER_NAME=converter \
