@@ -52,9 +52,9 @@
       "groupName": "go-deps"
     },
     {
-      "description": "Kubernetes-related Go modules",
+      "description": "Kubernetes and OpenShift Go modules",
       "matchManagers": ["gomod"],
-      "matchPackageNames": ["k8s.io/**", "sigs.k8s.io/**"],
+      "matchPackageNames": ["github.com/openshift/**", "k8s.io/**", "sigs.k8s.io/**"],
       "groupName": "go-k8s"
     },
     {
