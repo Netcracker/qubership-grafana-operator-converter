@@ -1,44 +1,19 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
-    "schedule:weekly",
+    "github>Netcracker/renovate-config:base",
+    "github>Netcracker/renovate-config:github-actions",
+    "github>Netcracker/renovate-config:go",
+    "github>Netcracker/renovate-config:netcracker-dependencies",
     "github>Netcracker/renovate-config:annotated-versions"
-  ],
-  "labels": [
-    "dependencies"
   ],
   "prConcurrentLimit": 20,
   "packageRules": [
     {
-      "description": "All other GitHub Actions",
-      "matchManagers": ["github-actions"],
-      "groupName": "actions-deps"
-    },
-    {
-      "description": "Netcracker GitHub Actions and reusable workflows",
-      "matchManagers": ["github-actions"],
-      "matchPackageNames": ["Netcracker/**", "netcracker/**"],
-      "groupName": "netcracker-github-actions",
-      "separateMajorMinor": false
-    },
-    {
       "description": "All other 3rd party Docker images",
       "matchManagers": ["dockerfile"],
+      "matchPackageNames": ["!ghcr.io/netcracker/**", "!alpine"],
       "groupName": "docker-deps"
-    },
-    {
-      "description": "Netcracker Docker images",
-      "matchManagers": ["dockerfile"],
-      "matchPackageNames": ["ghcr.io/netcracker/**"],
-      "groupName": "netcracker-docker-images",
-      "separateMajorMinor": false
-    },
-    {
-      "description": "Alpine runtime image and synchronized package repositories",
-      "matchDatasources": ["docker"],
-      "matchPackageNames": ["alpine"],
-      "groupName": "alpine-release"
     },
     {
       "description": "Alpine packages installed in the runtime image",
@@ -47,27 +22,16 @@
       "groupName": "alpine-packages"
     },
     {
-      "description": "All other Go dependencies",
-      "matchManagers": ["gomod"],
-      "groupName": "go-deps"
-    },
-    {
-      "description": "Kubernetes and OpenShift Go modules",
-      "matchManagers": ["gomod"],
-      "matchPackageNames": ["github.com/openshift/**", "k8s.io/**", "sigs.k8s.io/**"],
-      "groupName": "go-k8s"
-    },
-    {
-      "description": "OpenTelemetry Go modules",
-      "matchManagers": ["gomod"],
-      "matchPackageNames": ["go.opentelemetry.io/**"],
-      "groupName": "go-opentelemetry"
-    },
-    {
       "description": "Monitoring operator Go modules",
       "matchManagers": ["gomod"],
       "matchPackageNames": ["github.com/prometheus-operator/**", "github.com/VictoriaMetrics/**"],
       "groupName": "go-monitoring"
+    },
+    {
+      "description": "Alpine runtime image and synchronized package repositories",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["alpine"],
+      "groupName": "alpine-release"
     }
   ]
 }
