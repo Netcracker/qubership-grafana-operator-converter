@@ -6,9 +6,9 @@ toolchain go1.26.5
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
-	github.com/go-logr/logr v1.4.3
+	github.com/go-logr/logr v1.4.4
 	github.com/grafana/grafana-openapi-client-go v0.0.0-20260608140303-399c66621c54
-	github.com/openshift/api v0.0.0-20260108210832-e20773b54364
+	github.com/openshift/api 8ba0b25b0f29
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.11.1
 	k8s.io/api v0.35.3
