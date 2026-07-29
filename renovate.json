@@ -12,7 +12,7 @@
     {
       "description": "All other 3rd party Docker images",
       "matchManagers": ["dockerfile"],
-      "matchPackageNames": ["!ghcr.io/netcracker/**", "!alpine"],
+      "matchPackageNames": ["!ghcr.io/netcracker/**", "!alpine", "!golang"],
       "groupName": "docker-deps"
     },
     {
