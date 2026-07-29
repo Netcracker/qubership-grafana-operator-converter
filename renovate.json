@@ -22,12 +22,6 @@
       "groupName": "alpine-packages"
     },
     {
-      "description": "Monitoring operator Go modules",
-      "matchManagers": ["gomod"],
-      "matchPackageNames": ["github.com/prometheus-operator/**", "github.com/VictoriaMetrics/**"],
-      "groupName": "go-monitoring"
-    },
-    {
       "description": "Alpine runtime image and synchronized package repositories",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["alpine"],
