@@ -102,6 +102,10 @@ func (c *ConverterController) updateGrafanaNotificationChannel(old, new interfac
 		l.Error(err, "cannot get existing GrafanaContactPoint")
 		return
 	}
+	if !isConverterManaged(existingContactPoint) {
+		l.Error(fmt.Errorf("resource is not managed by the converter"), "cannot update existing GrafanaContactPoint")
+		return
+	}
 
 	if apiequality.Semantic.DeepEqual(existingContactPoint.Spec, contactPoint.Spec) {
 		l.Info("no updates in GrafanaContactPoint")
@@ -138,13 +142,7 @@ func (c *ConverterController) convertGrafanaNotificationChannel(src *v1alpha1.Gr
 	}
 
 	dst = &v1beta1.GrafanaContactPoint{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace:       src.GetNamespace(),
-			Name:            src.Name,
-			Labels:          src.GetLabels(),
-			Annotations:     src.GetAnnotations(),
-			OwnerReferences: src.GetOwnerReferences(),
-		},
+		ObjectMeta: convertedObjectMeta(src, src.Name),
 		Spec: v1beta1.GrafanaContactPointSpec{
 			Name:                      embeddedContactPoint.Name,
 			Type:                      *embeddedContactPoint.Type,

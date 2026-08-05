@@ -89,6 +89,10 @@ func (c *ConverterController) updateGrafanaFolder(old, new interface{}) {
 		l.Error(err, "cannot get existing GrafanaFolder")
 		return
 	}
+	if !isConverterManaged(existingFolder) {
+		l.Error(fmt.Errorf("resource is not managed by the converter"), "cannot update existing GrafanaFolder")
+		return
+	}
 
 	if apiequality.Semantic.DeepEqual(existingFolder.Spec, v1beta1Folder.Spec) {
 		l.Info("no updates in GrafanaFolders")
@@ -116,13 +120,7 @@ func (c *ConverterController) convertGrafanaFolder(src *v1alpha1.GrafanaFolder) 
 	c.log.Info(fmt.Sprintf("%s/%s conversion from %s to %s requested", src.Namespace, src.Name, v1alpha1.GroupVersion.String(), v1beta1.GroupVersion.String()))
 
 	dst = &v1beta1.GrafanaFolder{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace:       src.GetNamespace(),
-			Name:            src.Name,
-			Labels:          src.GetLabels(),
-			Annotations:     src.GetAnnotations(),
-			OwnerReferences: src.GetOwnerReferences(),
-		},
+		ObjectMeta: convertedObjectMeta(src, src.Name),
 		Spec: v1beta1.GrafanaFolderSpec{
 			Title:                     src.Spec.FolderName,
 			Permissions:               buildFolderPermission(src.GetPermissions()),
