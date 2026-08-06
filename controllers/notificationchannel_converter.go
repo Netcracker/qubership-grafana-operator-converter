@@ -119,13 +119,14 @@ func (c *ConverterController) updateGrafanaNotificationChannel(old, new interfac
 
 	var updatedContactPoint *v1beta1.GrafanaContactPoint
 	updatedContactPoint, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaContactPoints(existingContactPoint.Namespace).Update(ctx, existingContactPoint, metav1.UpdateOptions{})
+	if err != nil {
+		l.Error(err, "cannot update GrafanaContactPoint")
+		return
+	}
 	l.Info(fmt.Sprintf("GrafanaContactPoint %v/%v uid:%v has been updated",
 		updatedContactPoint.GetNamespace(),
 		updatedContactPoint.GetName(),
 		updatedContactPoint.GetUID()))
-	if err != nil {
-		l.Error(err, "cannot update GrafanaContactPoint")
-	}
 }
 
 // convertGrafanaNotificationChannel creates GrafanaNotificationChannel v1beta1 from GrafanaNotificationChannel v1alpha1

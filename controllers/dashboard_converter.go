@@ -115,13 +115,14 @@ func (c *ConverterController) updateGrafanaDashboard(old, new interface{}) {
 
 	var updatedDashboard *v1beta1.GrafanaDashboard
 	updatedDashboard, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existingDashboard.Namespace).Update(ctx, existingDashboard, metav1.UpdateOptions{})
+	if err != nil {
+		l.Error(err, "cannot update GrafanaDashboard")
+		return
+	}
 	l.Info(fmt.Sprintf("GrafanaDashboard %v/%v uid:%v has been updated",
 		updatedDashboard.GetNamespace(),
 		updatedDashboard.GetName(),
 		updatedDashboard.GetUID()))
-	if err != nil {
-		l.Error(err, "cannot update GrafanaDashboard")
-	}
 }
 
 // convertGrafanaDashboard creates GrafanaDashboard v1beta1 from GrafanaDashboard v1alpha1

@@ -106,13 +106,14 @@ func (c *ConverterController) updateGrafanaFolder(old, new interface{}) {
 
 	var updatedFolder *v1beta1.GrafanaFolder
 	updatedFolder, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaFolders(existingFolder.Namespace).Update(ctx, existingFolder, metav1.UpdateOptions{})
+	if err != nil {
+		l.Error(err, "cannot update GrafanaFolder")
+		return
+	}
 	l.Info(fmt.Sprintf("GrafanaFolder %v/%v uid:%v has been updated",
 		updatedFolder.GetNamespace(),
 		updatedFolder.GetName(),
 		updatedFolder.GetUID()))
-	if err != nil {
-		l.Error(err, "cannot update GrafanaFolder")
-	}
 }
 
 // convertGrafanaFolder creates GrafanaFolder v1beta1 from GrafanaFolder v1alpha1

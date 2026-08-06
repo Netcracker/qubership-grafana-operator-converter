@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	v1beta1fake "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/fake"
@@ -11,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 const (
@@ -139,6 +142,30 @@ func TestCreateGrafanaDashboardUpdatesMarkedCopy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "new", actual.Spec.Json)
 	assert.Equal(t, converterManagedValue, actual.Labels[converterManagedLabel])
+}
+
+func TestCreateGrafanaDashboardHandlesUpdateErrorWithoutPanic(t *testing.T) {
+	existing := &v1beta1.GrafanaDashboard{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sample-dashboard",
+			Namespace: "product-a",
+			Labels:    map[string]string{converterManagedLabel: converterManagedValue},
+		},
+		Spec: v1beta1.GrafanaDashboardSpec{Json: "old"},
+	}
+	client := v1beta1fake.NewSimpleClientset(existing)
+	client.PrependReactor("update", "grafanadashboards", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("API update failed")
+	})
+	controller := &ConverterController{log: logr.Discard(), v1beta1clientset: client}
+	source := &v1alpha1.GrafanaDashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: existing.Name, Namespace: existing.Namespace},
+		Spec:       v1alpha1.GrafanaDashboardSpec{Json: "new"},
+	}
+
+	assert.NotPanics(t, func() {
+		controller.createGrafanaDashboard(source)
+	})
 }
 
 func TestCreateGrafanaDatasourceDoesNotAdoptUnmarkedCollision(t *testing.T) {

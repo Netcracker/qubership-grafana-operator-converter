@@ -124,13 +124,14 @@ func (c *ConverterController) updateGrafanaDatasource(old, new interface{}) {
 
 		var updatedDatasource *v1beta1.GrafanaDatasource
 		updatedDatasource, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDatasources(existingDatasource.Namespace).Update(ctx, existingDatasource, metav1.UpdateOptions{})
+		if err != nil {
+			l.Error(err, "cannot update GrafanaDatasource")
+			continue
+		}
 		l.Info(fmt.Sprintf("GrafanaDashboard %v/%v uid:%v has been updated",
 			updatedDatasource.GetNamespace(),
 			updatedDatasource.GetName(),
 			updatedDatasource.GetUID()))
-		if err != nil {
-			l.Error(err, "cannot update GrafanaDatasource")
-		}
 	}
 }
 
