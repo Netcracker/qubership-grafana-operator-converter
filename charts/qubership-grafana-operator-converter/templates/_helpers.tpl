@@ -9,15 +9,20 @@ Expand the name of the chart.
 Build the normalized namespace list used by both RBAC and the controller.
 */}}
 {{- define "grafana-operator.watchNamespaces" -}}
-{{- if or .Values.namespaceScope .Values.watchNamespaces -}}
-{{- $namespaces := list .Release.Namespace (include "grafana-operator.namespace" .) -}}
+{{- if .Values.watchNamespaces -}}
+{{- $namespaces := list -}}
 {{- range splitList "," .Values.watchNamespaces -}}
 {{- $namespace := trim . -}}
 {{- if $namespace -}}
 {{- $namespaces = append $namespaces $namespace -}}
 {{- end -}}
 {{- end -}}
+{{- if eq (len $namespaces) 0 -}}
+{{- fail "watchNamespaces must contain at least one non-empty namespace" -}}
+{{- end -}}
 {{- join "," (sortAlpha (uniq $namespaces)) -}}
+{{- else if .Values.namespaceScope -}}
+{{- include "grafana-operator.namespace" . -}}
 {{- end -}}
 {{- end -}}
 

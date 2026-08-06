@@ -1,12 +1,11 @@
-# -- Use namespace-scoped watches and RBAC. The release and operator namespaces are always included.
+# -- Use the operator namespace for watches and RBAC when `watchNamespaces` is empty.
 namespaceScope: false
 
 # -- If you want to run multiple replicas of the grafana-operator, this is not recommended.
 leaderElect: false
 
-# -- Sets the WATCH_NAMESPACE environment variable,
-# it defines which namespaces the operator should be listening for.
-# The release and operator namespaces are added automatically. An empty value uses cluster scope unless namespaceScope is true.
+# -- Sets `WATCH_NAMESPACE` to the exact comma-separated namespace list. A nonempty list must contain at least one
+# namespace. An empty value uses cluster scope unless `namespaceScope` is true.
 watchNamespaces: ""
 
 # -- Reserved for compatibility and rejected when set. Use watchNamespaces because converter informers cannot apply dynamic namespace selection.

@@ -6,6 +6,7 @@
         "**/charts/*/crds/*.yaml",
         "**/charts/*/templates/*.yaml",
         "**/controllers/**",
-        "**/docs/examples/**"
+        "**/docs/examples/**",
+        "**/tests/helm/*.golden.yaml"
     ]
 }

@@ -20,7 +20,7 @@ Just execute:
 helm install grafana-operator-converter charts/qubership-grafana-operator-converter
 ```
 
-All parameters described in [Chart's README](charts/qubership-grafana-operator-converter/README.md).
+All parameters are described in the [chart documentation](charts/qubership-grafana-operator-converter/README.md).
 
 ## Usage
 

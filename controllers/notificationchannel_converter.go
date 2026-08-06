@@ -91,7 +91,7 @@ func (c *ConverterController) updateGrafanaNotificationChannel(old, new interfac
 	if err != nil {
 		if errors.IsNotFound(err) {
 			var createdContactPoint *v1beta1.GrafanaContactPoint
-			if createdContactPoint, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaContactPoints(notificationChannel.Namespace).Create(ctx, contactPoint, metav1.CreateOptions{}); err == nil {
+			if createdContactPoint, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaContactPoints(contactPoint.Namespace).Create(ctx, contactPoint, metav1.CreateOptions{}); err == nil {
 				l.Info(fmt.Sprintf("GrafanaContactPoint %v/%v uid:%v has been created",
 					createdContactPoint.GetNamespace(),
 					createdContactPoint.GetName(),

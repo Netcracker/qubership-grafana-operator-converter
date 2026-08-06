@@ -11,8 +11,10 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8stesting "k8s.io/client-go/testing"
 )
 
@@ -194,6 +196,37 @@ func TestCreateGrafanaDatasourceDoesNotAdoptUnmarkedCollision(t *testing.T) {
 	assert.Equal(t, "foreign", actual.Spec.Datasource.Name)
 }
 
+func TestCreateGrafanaDatasourceHandlesUpdateErrorWithoutPanic(t *testing.T) {
+	existing := &v1beta1.GrafanaDatasource{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "product-a-sample",
+			Namespace: "product-a",
+			Labels:    map[string]string{converterManagedLabel: converterManagedValue},
+		},
+		Spec: v1beta1.GrafanaDatasourceSpec{
+			Datasource: &v1beta1.GrafanaDatasourceInternal{Name: "old"},
+		},
+	}
+	client := v1beta1fake.NewSimpleClientset(existing)
+	updateAttempted := false
+	client.PrependReactor("update", "grafanadatasources", func(k8stesting.Action) (bool, runtime.Object, error) {
+		updateAttempted = true
+		return true, nil, errors.New("API update failed")
+	})
+	controller := &ConverterController{log: logr.Discard(), v1beta1clientset: client}
+	source := &v1alpha1.GrafanaDataSource{
+		ObjectMeta: metav1.ObjectMeta{Name: "sample", Namespace: existing.Namespace},
+		Spec: v1alpha1.GrafanaDataSourceSpec{
+			Datasources: []v1alpha1.GrafanaDataSourceFields{{Name: "Sample", Type: "prometheus"}},
+		},
+	}
+
+	assert.NotPanics(t, func() {
+		controller.createGrafanaDatasource(source)
+	})
+	assert.True(t, updateAttempted)
+}
+
 func TestCreateGrafanaFolderDoesNotAdoptUnmarkedCollision(t *testing.T) {
 	existing := &v1beta1.GrafanaFolder{
 		ObjectMeta: metav1.ObjectMeta{Name: "sample-folder", Namespace: "product-a"},
@@ -213,6 +246,33 @@ func TestCreateGrafanaFolderDoesNotAdoptUnmarkedCollision(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "foreign", actual.Spec.Title)
+}
+
+func TestCreateGrafanaFolderHandlesUpdateErrorWithoutPanic(t *testing.T) {
+	existing := &v1beta1.GrafanaFolder{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sample-folder",
+			Namespace: "product-a",
+			Labels:    map[string]string{converterManagedLabel: converterManagedValue},
+		},
+		Spec: v1beta1.GrafanaFolderSpec{Title: "old"},
+	}
+	client := v1beta1fake.NewSimpleClientset(existing)
+	updateAttempted := false
+	client.PrependReactor("update", "grafanafolders", func(k8stesting.Action) (bool, runtime.Object, error) {
+		updateAttempted = true
+		return true, nil, errors.New("API update failed")
+	})
+	controller := &ConverterController{log: logr.Discard(), v1beta1clientset: client}
+	source := &v1alpha1.GrafanaFolder{
+		ObjectMeta: metav1.ObjectMeta{Name: existing.Name, Namespace: existing.Namespace},
+		Spec:       v1alpha1.GrafanaFolderSpec{FolderName: "new"},
+	}
+
+	assert.NotPanics(t, func() {
+		controller.createGrafanaFolder(source)
+	})
+	assert.True(t, updateAttempted)
 }
 
 func TestCreateGrafanaNotificationChannelDoesNotAdoptUnmarkedCollision(t *testing.T) {
@@ -236,4 +296,68 @@ func TestCreateGrafanaNotificationChannelDoesNotAdoptUnmarkedCollision(t *testin
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "foreign", actual.Spec.Name)
+}
+
+func TestCreateGrafanaNotificationChannelHandlesUpdateErrorWithoutPanic(t *testing.T) {
+	existing := &v1beta1.GrafanaContactPoint{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sample-contact-point",
+			Namespace: "product-a",
+			Labels:    map[string]string{converterManagedLabel: converterManagedValue},
+		},
+		Spec: v1beta1.GrafanaContactPointSpec{Name: "old", Type: "email"},
+	}
+	client := v1beta1fake.NewSimpleClientset(existing)
+	updateAttempted := false
+	client.PrependReactor("update", "grafanacontactpoints", func(k8stesting.Action) (bool, runtime.Object, error) {
+		updateAttempted = true
+		return true, nil, errors.New("API update failed")
+	})
+	controller := &ConverterController{log: logr.Discard(), v1beta1clientset: client}
+	source := &v1alpha1.GrafanaNotificationChannel{
+		ObjectMeta: metav1.ObjectMeta{Name: existing.Name, Namespace: existing.Namespace},
+		Spec: v1alpha1.GrafanaNotificationChannelSpec{
+			Json: `{"name":"new","type":"email","settings":{}}`,
+		},
+	}
+
+	assert.NotPanics(t, func() {
+		controller.createGrafanaNotificationChannel(source)
+	})
+	assert.True(t, updateAttempted)
+}
+
+func TestCreateGrafanaNotificationChannelHandlesAlreadyExistsNotFoundRace(t *testing.T) {
+	client := v1beta1fake.NewSimpleClientset()
+	createAttempts := 0
+	client.PrependReactor("create", "grafanacontactpoints", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		createAttempts++
+		createAction := action.(k8stesting.CreateAction)
+		return true, nil, apierrs.NewAlreadyExists(
+			schema.GroupResource{Group: v1beta1.GroupVersion.Group, Resource: "grafanacontactpoints"},
+			createAction.GetObject().(metav1.Object).GetName(),
+		)
+	})
+	getAttempts := 0
+	client.PrependReactor("get", "grafanacontactpoints", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		getAttempts++
+		getAction := action.(k8stesting.GetAction)
+		return true, nil, apierrs.NewNotFound(
+			schema.GroupResource{Group: v1beta1.GroupVersion.Group, Resource: "grafanacontactpoints"},
+			getAction.GetName(),
+		)
+	})
+	controller := &ConverterController{log: logr.Discard(), v1beta1clientset: client}
+	source := &v1alpha1.GrafanaNotificationChannel{
+		ObjectMeta: metav1.ObjectMeta{Name: "sample-contact-point", Namespace: "product-a"},
+		Spec: v1alpha1.GrafanaNotificationChannelSpec{
+			Json: `{"name":"sample","type":"email","settings":{}}`,
+		},
+	}
+
+	assert.NotPanics(t, func() {
+		controller.createGrafanaNotificationChannel(source)
+	})
+	assert.Equal(t, 2, createAttempts)
+	assert.Equal(t, 1, getAttempts)
 }
