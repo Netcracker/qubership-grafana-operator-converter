@@ -89,6 +89,10 @@ func (c *ConverterController) updateGrafanaFolder(old, new interface{}) {
 		l.Error(err, "cannot get existing GrafanaFolder")
 		return
 	}
+	if !isConverterManaged(existingFolder) {
+		l.Error(fmt.Errorf("resource is not managed by the converter"), "cannot update existing GrafanaFolder")
+		return
+	}
 
 	if apiequality.Semantic.DeepEqual(existingFolder.Spec, v1beta1Folder.Spec) {
 		l.Info("no updates in GrafanaFolders")
@@ -102,13 +106,14 @@ func (c *ConverterController) updateGrafanaFolder(old, new interface{}) {
 
 	var updatedFolder *v1beta1.GrafanaFolder
 	updatedFolder, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaFolders(existingFolder.Namespace).Update(ctx, existingFolder, metav1.UpdateOptions{})
+	if err != nil {
+		l.Error(err, "cannot update GrafanaFolder")
+		return
+	}
 	l.Info(fmt.Sprintf("GrafanaFolder %v/%v uid:%v has been updated",
 		updatedFolder.GetNamespace(),
 		updatedFolder.GetName(),
 		updatedFolder.GetUID()))
-	if err != nil {
-		l.Error(err, "cannot update GrafanaFolder")
-	}
 }
 
 // convertGrafanaFolder creates GrafanaFolder v1beta1 from GrafanaFolder v1alpha1
@@ -116,13 +121,7 @@ func (c *ConverterController) convertGrafanaFolder(src *v1alpha1.GrafanaFolder) 
 	c.log.Info(fmt.Sprintf("%s/%s conversion from %s to %s requested", src.Namespace, src.Name, v1alpha1.GroupVersion.String(), v1beta1.GroupVersion.String()))
 
 	dst = &v1beta1.GrafanaFolder{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace:       src.GetNamespace(),
-			Name:            src.Name,
-			Labels:          src.GetLabels(),
-			Annotations:     src.GetAnnotations(),
-			OwnerReferences: src.GetOwnerReferences(),
-		},
+		ObjectMeta: convertedObjectMeta(src, src.Name),
 		Spec: v1beta1.GrafanaFolderSpec{
 			Title:                     src.Spec.FolderName,
 			Permissions:               buildFolderPermission(src.GetPermissions()),

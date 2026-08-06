@@ -92,6 +92,10 @@ func (c *ConverterController) updateGrafanaDashboard(old, new interface{}) {
 		l.Error(err, "cannot get existing GrafanaDashboard")
 		return
 	}
+	if !isConverterManaged(existingDashboard) {
+		l.Error(fmt.Errorf("resource is not managed by the converter"), "cannot update existing GrafanaDashboard")
+		return
+	}
 
 	if apiequality.Semantic.DeepEqual(existingDashboard.Spec, v1beta1Dashboard.Spec) {
 		l.Info("no updates in GrafanaDashboards")
@@ -111,13 +115,14 @@ func (c *ConverterController) updateGrafanaDashboard(old, new interface{}) {
 
 	var updatedDashboard *v1beta1.GrafanaDashboard
 	updatedDashboard, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existingDashboard.Namespace).Update(ctx, existingDashboard, metav1.UpdateOptions{})
+	if err != nil {
+		l.Error(err, "cannot update GrafanaDashboard")
+		return
+	}
 	l.Info(fmt.Sprintf("GrafanaDashboard %v/%v uid:%v has been updated",
 		updatedDashboard.GetNamespace(),
 		updatedDashboard.GetName(),
 		updatedDashboard.GetUID()))
-	if err != nil {
-		l.Error(err, "cannot update GrafanaDashboard")
-	}
 }
 
 // convertGrafanaDashboard creates GrafanaDashboard v1beta1 from GrafanaDashboard v1alpha1
@@ -125,13 +130,7 @@ func (c *ConverterController) convertGrafanaDashboard(src *v1alpha1.GrafanaDashb
 	c.log.Info(fmt.Sprintf("%s/%s conversion from %s to %s requested", src.Namespace, src.Name, v1alpha1.GroupVersion.String(), v1beta1.GroupVersion.String()))
 
 	dst = &v1beta1.GrafanaDashboard{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace:       src.Namespace,
-			Name:            src.Name,
-			Labels:          src.Labels,
-			Annotations:     src.Annotations,
-			OwnerReferences: src.GetOwnerReferences(),
-		},
+		ObjectMeta: convertedObjectMeta(src, src.Name),
 	}
 
 	// Spec conversion

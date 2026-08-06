@@ -4,6 +4,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-resources-converter
+  namespace: {{ include "grafana-operator.namespace" . }}
 data:
   parameters.yaml: |-
     {{- toYaml .Values.grafana.converter | nindent 4 }}

@@ -1,16 +1,11 @@
-{{ $rbac := .Files.Get "files/rbac.yaml" | fromYaml  }}
-{{ $rbacOpenShift := .Files.Get "files/rbac-openshift.yaml" | fromYaml  }}
-{{- $watchNamespaces := coalesce .Values.watchNamespaces .Values.namespaceOverride .Release.Namespace  }}
-{{- $namespaceScoped := false }}
-{{- $isOpenShift := false }}
-{{- if or (.Values.namespaceScope) (.Values.watchNamespaces) }}
-{{- $namespaceScoped = true }}
+{{- $watchNamespaces := include "grafana-operator.watchNamespaces" . }}
+{{- $namespaceScoped := ne $watchNamespaces "" }}
+{{- $rbacNamespaces := list "" }}
+{{- if $namespaceScoped }}
+{{- $rbacNamespaces = splitList "," $watchNamespaces }}
 {{- end }}
-{{- if (.Values.isOpenShift) }}
-  {{- $isOpenShift = true }}
-{{- end }}
-{{- $operatorNamespace := .Release.Namespace }}
-{{- range ( split "," $watchNamespaces ) }}
+{{- if .Values.grafana.converter.enable }}
+{{- range $rbacNamespaces }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: {{ if not $namespaceScoped }}Cluster{{ end }}Role
@@ -25,9 +20,73 @@ metadata:
     {{- toYaml . | nindent 4 }}
     {{- end }}
 rules:
-  {{- toYaml $rbac.rules | nindent 2 }}
-  {{- if $isOpenShift }}
-  {{- toYaml $rbacOpenShift.rules | nindent 2 -}}
+  {{- if $.Values.grafana.converter.dashboard }}
+  - apiGroups:
+      - integreatly.org
+    resources:
+      - grafanadashboards
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - grafana.integreatly.org
+    resources:
+      - grafanadashboards
+    verbs:
+      - create
+      - get
+      - update
+  {{- end }}
+  {{- if $.Values.grafana.converter.datasource }}
+  - apiGroups:
+      - integreatly.org
+    resources:
+      - grafanadatasources
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - grafana.integreatly.org
+    resources:
+      - grafanadatasources
+    verbs:
+      - create
+      - get
+      - update
+  {{- end }}
+  {{- if $.Values.grafana.converter.folder }}
+  - apiGroups:
+      - integreatly.org
+    resources:
+      - grafanafolders
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - grafana.integreatly.org
+    resources:
+      - grafanafolders
+    verbs:
+      - create
+      - get
+      - update
+  {{- end }}
+  {{- if $.Values.grafana.converter.notification }}
+  - apiGroups:
+      - integreatly.org
+    resources:
+      - grafananotificationchannels
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - grafana.integreatly.org
+    resources:
+      - grafanacontactpoints
+    verbs:
+      - create
+      - get
+      - update
   {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -49,5 +108,54 @@ subjects:
 roleRef:
   kind: {{ if not $namespaceScoped }}Cluster{{ end }}Role
   name: {{ include "grafana-operator.fullname" $ }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+{{- end }}
+{{- if .Values.leaderElect }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "grafana-operator.fullname" . }}-leader-election
+  namespace: {{ include "grafana-operator.namespace" . }}
+  labels:
+    {{- include "grafana-operator.labels" . | nindent 4 }}
+    {{- with .Values.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+rules:
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - get
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "grafana-operator.fullname" . }}-leader-election
+  namespace: {{ include "grafana-operator.namespace" . }}
+  labels:
+    {{- include "grafana-operator.labels" . | nindent 4 }}
+    {{- with .Values.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "grafana-operator.serviceAccountName" . }}
+    namespace: {{ include "grafana-operator.namespace" . }}
+roleRef:
+  kind: Role
+  name: {{ include "grafana-operator.fullname" . }}-leader-election
   apiGroup: rbac.authorization.k8s.io
 {{- end }}

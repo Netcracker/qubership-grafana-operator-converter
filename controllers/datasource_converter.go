@@ -107,6 +107,10 @@ func (c *ConverterController) updateGrafanaDatasource(old, new interface{}) {
 			l.Error(err, "cannot get existing GrafanaDatasource")
 			continue
 		}
+		if !isConverterManaged(existingDatasource) {
+			l.Error(fmt.Errorf("resource is not managed by the converter"), "cannot update existing GrafanaDatasource", "datasource", ds.Name)
+			continue
+		}
 
 		if apiequality.Semantic.DeepEqual(existingDatasource.Spec, ds.Spec) {
 			l.Info("no updates in GrafanaDatasource")
@@ -120,13 +124,14 @@ func (c *ConverterController) updateGrafanaDatasource(old, new interface{}) {
 
 		var updatedDatasource *v1beta1.GrafanaDatasource
 		updatedDatasource, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDatasources(existingDatasource.Namespace).Update(ctx, existingDatasource, metav1.UpdateOptions{})
+		if err != nil {
+			l.Error(err, "cannot update GrafanaDatasource")
+			continue
+		}
 		l.Info(fmt.Sprintf("GrafanaDashboard %v/%v uid:%v has been updated",
 			updatedDatasource.GetNamespace(),
 			updatedDatasource.GetName(),
 			updatedDatasource.GetUID()))
-		if err != nil {
-			l.Error(err, "cannot update GrafanaDatasource")
-		}
 	}
 }
 
@@ -160,13 +165,7 @@ func (c *ConverterController) convertGrafanaDatasource(src *v1alpha1.GrafanaData
 		}
 
 		betaDatasource := &v1beta1.GrafanaDatasource{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace:       src.Namespace,
-				Name:            fmt.Sprintf("%s-%s", src.Namespace, reg.ReplaceAllString(strings.ToLower(ds.Name), "-")),
-				Labels:          src.Labels,
-				Annotations:     src.Annotations,
-				OwnerReferences: src.GetOwnerReferences(),
-			},
+			ObjectMeta: convertedObjectMeta(src, fmt.Sprintf("%s-%s", src.Namespace, reg.ReplaceAllString(strings.ToLower(ds.Name), "-"))),
 		}
 
 		uid := ds.Uid

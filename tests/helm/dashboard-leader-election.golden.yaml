@@ -1,0 +1,98 @@
+---
+# Source: qubership-grafana-operator-converter/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: converter-qubership-grafana-operator-converter
+  labels:
+    helm.sh/chart: qubership-grafana-operator-converter-0.1.0
+    app.kubernetes.io/name: qubership-grafana-operator-converter
+    app.kubernetes.io/instance: converter
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups:
+      - integreatly.org
+    resources:
+      - grafanadashboards
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - grafana.integreatly.org
+    resources:
+      - grafanadashboards
+    verbs:
+      - create
+      - get
+      - update
+---
+# Source: qubership-grafana-operator-converter/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: converter-qubership-grafana-operator-converter
+  labels:
+    helm.sh/chart: qubership-grafana-operator-converter-0.1.0
+    app.kubernetes.io/name: qubership-grafana-operator-converter
+    app.kubernetes.io/instance: converter
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+subjects:
+  - kind: ServiceAccount
+    name: converter-qubership-grafana-operator-converter
+    namespace: monitoring
+roleRef:
+  kind: ClusterRole
+  name: converter-qubership-grafana-operator-converter
+  apiGroup: rbac.authorization.k8s.io
+---
+# Source: qubership-grafana-operator-converter/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: converter-qubership-grafana-operator-converter-leader-election
+  namespace: monitoring
+  labels:
+    helm.sh/chart: qubership-grafana-operator-converter-0.1.0
+    app.kubernetes.io/name: qubership-grafana-operator-converter
+    app.kubernetes.io/instance: converter
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - get
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+---
+# Source: qubership-grafana-operator-converter/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: converter-qubership-grafana-operator-converter-leader-election
+  namespace: monitoring
+  labels:
+    helm.sh/chart: qubership-grafana-operator-converter-0.1.0
+    app.kubernetes.io/name: qubership-grafana-operator-converter
+    app.kubernetes.io/instance: converter
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: Helm
+subjects:
+  - kind: ServiceAccount
+    name: converter-qubership-grafana-operator-converter
+    namespace: monitoring
+roleRef:
+  kind: Role
+  name: converter-qubership-grafana-operator-converter-leader-election
+  apiGroup: rbac.authorization.k8s.io
