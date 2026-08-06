@@ -1,5 +1,4 @@
-# -- If the operator should run in namespace-scope or not,
-# if true the operator will only be able to manage instances in the same namespace
+# -- Use namespace-scoped watches and RBAC. The release and operator namespaces are always included.
 namespaceScope: false
 
 # -- If you want to run multiple replicas of the grafana-operator, this is not recommended.
@@ -7,18 +6,16 @@ leaderElect: false
 
 # -- Sets the WATCH_NAMESPACE environment variable,
 # it defines which namespaces the operator should be listening for.
-# By default it's all namespaces, if you only want to listen for the same namespace as the operator is deployed to look at namespaceScope.
+# The release and operator namespaces are added automatically. An empty value uses cluster scope unless namespaceScope is true.
 watchNamespaces: ""
 
-# -- Sets the WATCH_NAMESPACE_SELECTOR environment variable,
-# it defines which namespaces the operator should be listening for based on label and key-value pair added on namespace kind.
-# By default it's all namespaces.
+# -- Reserved for compatibility and rejected when set. Use watchNamespaces because converter informers cannot apply dynamic namespace selection.
 watchNamespaceSelector: ""
 
-# -- Determines if the target cluster is OpenShift. Additional rbac permissions for routes will be added on OpenShift
+# -- Deprecated compatibility value. The converter does not access OpenShift Route resources.
 isOpenShift: false
 
-# -- Additional environment variables
+# -- Additional environment variables. WATCH_NAMESPACE and WATCH_NAMESPACE_SELECTOR are reserved.
 env: []
   # -- grafana image, e.g. docker.io/grafana/grafana:9.1.6, overwrites the default grafana image defined in the operator
   # - name: RELATED_IMAGE_GRAFANA

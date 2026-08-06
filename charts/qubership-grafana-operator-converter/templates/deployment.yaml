@@ -1,3 +1,11 @@
+{{- if .Values.watchNamespaceSelector }}
+{{- fail "watchNamespaceSelector is not supported because converter informers cannot apply dynamic namespace selection. Use watchNamespaces instead." }}
+{{- end }}
+{{- range .Values.env }}
+{{- if or (eq .name "WATCH_NAMESPACE") (eq .name "WATCH_NAMESPACE_SELECTOR") }}
+{{- fail (printf "env cannot override %s because namespace scope is managed by watchNamespaces" .name) }}
+{{- end }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -44,17 +52,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: WATCH_NAMESPACE
-              {{- if and .Values.namespaceScope (eq .Values.watchNamespaces "") }}
-              value: {{ .Release.Namespace }}
-              {{ else }}
-              value: {{ .Values.watchNamespaces }}
-              {{- end }}
-            - name: WATCH_NAMESPACE_SELECTOR
-              {{- if and .Values.namespaceScope (eq .Values.watchNamespaceSelector "") }}
-              value: ""
-              {{ else }}
-              value: {{quote .Values.watchNamespaceSelector }}
-              {{- end }}
+              value: {{ include "grafana-operator.watchNamespaces" . | quote }}
             {{- with .Values.env }}
               {{- toYaml . | nindent 12 }}
             {{- end }}

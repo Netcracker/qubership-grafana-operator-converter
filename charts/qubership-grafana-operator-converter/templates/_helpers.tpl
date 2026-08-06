@@ -6,6 +6,22 @@ Expand the name of the chart.
 {{- end }}
 
 {{/*
+Build the normalized namespace list used by both RBAC and the controller.
+*/}}
+{{- define "grafana-operator.watchNamespaces" -}}
+{{- if or .Values.namespaceScope .Values.watchNamespaces -}}
+{{- $namespaces := list .Release.Namespace (include "grafana-operator.namespace" .) -}}
+{{- range splitList "," .Values.watchNamespaces -}}
+{{- $namespace := trim . -}}
+{{- if $namespace -}}
+{{- $namespaces = append $namespaces $namespace -}}
+{{- end -}}
+{{- end -}}
+{{- join "," (sortAlpha (uniq $namespaces)) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
