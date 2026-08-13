@@ -91,7 +91,7 @@ func (c *ConverterController) updateGrafanaNotificationChannel(old, new interfac
 	if err != nil {
 		if errors.IsNotFound(err) {
 			var createdContactPoint *v1beta1.GrafanaContactPoint
-			if createdContactPoint, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaContactPoints(notificationChannel.Namespace).Create(ctx, contactPoint, metav1.CreateOptions{}); err == nil {
+			if createdContactPoint, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaContactPoints(contactPoint.Namespace).Create(ctx, contactPoint, metav1.CreateOptions{}); err == nil {
 				l.Info(fmt.Sprintf("GrafanaContactPoint %v/%v uid:%v has been created",
 					createdContactPoint.GetNamespace(),
 					createdContactPoint.GetName(),
@@ -100,6 +100,10 @@ func (c *ConverterController) updateGrafanaNotificationChannel(old, new interfac
 			}
 		}
 		l.Error(err, "cannot get existing GrafanaContactPoint")
+		return
+	}
+	if !isConverterManaged(existingContactPoint) {
+		l.Error(fmt.Errorf("resource is not managed by the converter"), "cannot update existing GrafanaContactPoint")
 		return
 	}
 
@@ -115,13 +119,14 @@ func (c *ConverterController) updateGrafanaNotificationChannel(old, new interfac
 
 	var updatedContactPoint *v1beta1.GrafanaContactPoint
 	updatedContactPoint, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaContactPoints(existingContactPoint.Namespace).Update(ctx, existingContactPoint, metav1.UpdateOptions{})
+	if err != nil {
+		l.Error(err, "cannot update GrafanaContactPoint")
+		return
+	}
 	l.Info(fmt.Sprintf("GrafanaContactPoint %v/%v uid:%v has been updated",
 		updatedContactPoint.GetNamespace(),
 		updatedContactPoint.GetName(),
 		updatedContactPoint.GetUID()))
-	if err != nil {
-		l.Error(err, "cannot update GrafanaContactPoint")
-	}
 }
 
 // convertGrafanaNotificationChannel creates GrafanaNotificationChannel v1beta1 from GrafanaNotificationChannel v1alpha1
@@ -138,13 +143,7 @@ func (c *ConverterController) convertGrafanaNotificationChannel(src *v1alpha1.Gr
 	}
 
 	dst = &v1beta1.GrafanaContactPoint{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace:       src.GetNamespace(),
-			Name:            src.Name,
-			Labels:          src.GetLabels(),
-			Annotations:     src.GetAnnotations(),
-			OwnerReferences: src.GetOwnerReferences(),
-		},
+		ObjectMeta: convertedObjectMeta(src, src.Name),
 		Spec: v1beta1.GrafanaContactPointSpec{
 			Name:                      embeddedContactPoint.Name,
 			Type:                      *embeddedContactPoint.Type,

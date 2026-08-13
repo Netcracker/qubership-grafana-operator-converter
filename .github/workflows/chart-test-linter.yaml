@@ -9,11 +9,15 @@ on:
       - 'main'
     paths:
       - 'charts/**'
+      - 'tests/helm/**'
+      - 'tools/verify-chart.sh'
   push:
     branches:
       - main
     paths:
       - 'charts/**'
+      - 'tests/helm/**'
+      - 'tools/verify-chart.sh'
   workflow_dispatch: null
 
 jobs:
@@ -36,3 +40,6 @@ jobs:
 
       - name: Run chart-testing (lint)
         run: ct lint --check-version-increment=false --validate-maintainers=false --target-branch=main --chart-dirs=charts
+
+      - name: Verify rendered chart contracts
+        run: ./tools/verify-chart.sh
