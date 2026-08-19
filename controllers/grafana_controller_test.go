@@ -121,6 +121,22 @@ func TestReadConfigRejectsEnabledConfigWithoutConverters(t *testing.T) {
 	assert.Contains(t, err.Error(), "at least one converter")
 }
 
+func TestReadConfigRejectsInvalidInstanceSelector(t *testing.T) {
+	path := writeConverterConfig(t, `enable: true
+dashboard: true
+instanceSelector:
+  matchExpressions:
+    - key: app.kubernetes.io/component
+      operator: In
+      values: []
+`)
+
+	_, err := ReadConfig(path)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "instanceSelector")
+}
+
 func TestReadConfigRejectsMalformedYAML(t *testing.T) {
 	path := writeConverterConfig(t, "enable: [\n")
 
