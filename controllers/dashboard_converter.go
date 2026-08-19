@@ -54,17 +54,12 @@ func (c *ConverterController) updateGrafanaDashboard(old, new interface{}) {
 	if ok && old != nil {
 		l = c.log.WithValues("kind", v1alpha1.GrafanaDashboardKind, "name", dashboard.Name, "ns", dashboard.Namespace)
 
-		var alphaDashboardOld *v1alpha1.GrafanaDashboard
-		alphaDashboardOld, ok = old.(*v1alpha1.GrafanaDashboard)
+		_, ok = old.(*v1alpha1.GrafanaDashboard)
 		if !ok {
 			l.Error(fmt.Errorf("type assertion failed"), "cannot cast to v1alpha1 GrafanaDashboard")
 			return
 		}
 
-		if apiequality.Semantic.DeepEqual(alphaDashboardOld.Spec, dashboard.Spec) {
-			l.Info("no diffs in GrafanaDashboards")
-			return
-		}
 		l.Info(fmt.Sprintf("start converting GrafanaDashboard %s to %s", v1alpha1.GroupVersion.String(), v1beta1.GroupVersion.String()))
 		v1beta1Dashboard = c.convertGrafanaDashboard(dashboard)
 	} else {
@@ -97,21 +92,18 @@ func (c *ConverterController) updateGrafanaDashboard(old, new interface{}) {
 		return
 	}
 
-	if apiequality.Semantic.DeepEqual(existingDashboard.Spec, v1beta1Dashboard.Spec) {
+	if apiequality.Semantic.DeepEqual(existingDashboard.Spec, v1beta1Dashboard.Spec) &&
+		apiequality.Semantic.DeepEqual(existingDashboard.Labels, v1beta1Dashboard.Labels) &&
+		apiequality.Semantic.DeepEqual(existingDashboard.Annotations, v1beta1Dashboard.Annotations) &&
+		apiequality.Semantic.DeepEqual(existingDashboard.OwnerReferences, v1beta1Dashboard.OwnerReferences) {
 		l.Info("no updates in GrafanaDashboards")
 		return
 	}
 
 	existingDashboard.Spec = v1beta1Dashboard.Spec
-	if existingDashboard.Annotations == nil {
-		existingDashboard.Annotations = make(map[string]string, len(v1beta1Dashboard.Annotations))
-	}
-	maps.Copy(existingDashboard.Annotations, v1beta1Dashboard.Annotations)
-	if existingDashboard.Labels == nil {
-		existingDashboard.Labels = make(map[string]string, len(v1beta1Dashboard.Labels))
-	}
-	maps.Copy(existingDashboard.Labels, v1beta1Dashboard.Labels)
-	existingDashboard.OwnerReferences = v1beta1Dashboard.OwnerReferences
+	existingDashboard.Annotations = maps.Clone(v1beta1Dashboard.Annotations)
+	existingDashboard.Labels = maps.Clone(v1beta1Dashboard.Labels)
+	existingDashboard.OwnerReferences = append([]metav1.OwnerReference(nil), v1beta1Dashboard.OwnerReferences...)
 
 	var updatedDashboard *v1beta1.GrafanaDashboard
 	updatedDashboard, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existingDashboard.Namespace).Update(ctx, existingDashboard, metav1.UpdateOptions{})
@@ -130,7 +122,7 @@ func (c *ConverterController) convertGrafanaDashboard(src *v1alpha1.GrafanaDashb
 	c.log.Info(fmt.Sprintf("%s/%s conversion from %s to %s requested", src.Namespace, src.Name, v1alpha1.GroupVersion.String(), v1beta1.GroupVersion.String()))
 
 	dst = &v1beta1.GrafanaDashboard{
-		ObjectMeta: convertedObjectMeta(src, src.Name),
+		ObjectMeta: convertedGrafanaDashboardMeta(src),
 	}
 
 	// Spec conversion
