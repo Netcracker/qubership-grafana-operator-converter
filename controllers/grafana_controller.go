@@ -239,6 +239,11 @@ func ReadConfig(path string) (*ConverterConfig, error) {
 	if converterConfig.Enable && converterConfig.EnabledGrafanaConverter == (EnabledGrafanaConverter{}) {
 		return &ConverterConfig{}, fmt.Errorf("at least one converter must be enabled when conversion is enabled")
 	}
+	if converterConfig.InstanceSelector != nil {
+		if _, selectorErr := metav1.LabelSelectorAsSelector(converterConfig.InstanceSelector); selectorErr != nil {
+			return &ConverterConfig{}, fmt.Errorf("invalid instanceSelector: %w", selectorErr)
+		}
+	}
 	return converterConfig, nil
 }
 
