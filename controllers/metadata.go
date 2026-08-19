@@ -35,7 +35,11 @@ func convertedGrafanaDashboardMeta(source metav1.Object) metav1.ObjectMeta {
 	if labels == nil {
 		labels = make(map[string]string, 1)
 	}
-	delete(labels, "app.kubernetes.io/managed-by")
+	for key := range labels {
+		if key == "app.kubernetes.io/instance" || key == "app.kubernetes.io/managed-by" || strings.HasPrefix(key, "argocd.argoproj.io/") {
+			delete(labels, key)
+		}
+	}
 	labels[managedByOperatorLabelKey] = managedByOperatorLabelValue
 
 	annotations := maps.Clone(source.GetAnnotations())

@@ -32,8 +32,10 @@ func TestConvertGrafanaDashboardMarksManagedCopyWithoutMutatingSource(t *testing
 			Namespace: "product-a",
 			UID:       types.UID("source-uid"),
 			Labels: map[string]string{
-				"app.kubernetes.io/instance":   "sample",
-				"app.kubernetes.io/managed-by": "Helm",
+				"product.example.com/component": "dashboard",
+				"app.kubernetes.io/instance":    "product-a",
+				"app.kubernetes.io/managed-by":  "Helm",
+				"argocd.argoproj.io/instance":   "product-a",
 			},
 			Annotations: map[string]string{
 				"product.example.com/team":                         "observability",
@@ -51,8 +53,8 @@ func TestConvertGrafanaDashboardMarksManagedCopyWithoutMutatingSource(t *testing
 	converted := controller.convertGrafanaDashboard(source)
 
 	assert.Equal(t, map[string]string{
-		converterManagedLabel:        converterManagedValue,
-		"app.kubernetes.io/instance": "sample",
+		converterManagedLabel:           converterManagedValue,
+		"product.example.com/component": "dashboard",
 	}, converted.Labels)
 	assert.Equal(t, map[string]string{
 		"product.example.com/team": "observability",
