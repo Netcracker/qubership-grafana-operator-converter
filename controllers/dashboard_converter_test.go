@@ -15,30 +15,151 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	k8stesting "k8s.io/client-go/testing"
 )
 
 const (
 	converterManagedLabel = "app.kubernetes.io/managed-by-operator"
 	converterManagedValue = "grafana-operator-converter"
+	sourceUIDAnnotation   = "monitoring.netcracker.com/grafana-dashboard-source-uid"
 )
 
 func TestConvertGrafanaDashboardMarksManagedCopyWithoutMutatingSource(t *testing.T) {
-	sourceLabels := map[string]string{"product": "sample"}
 	source := &v1alpha1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "sample-dashboard",
 			Namespace: "product-a",
-			Labels:    sourceLabels,
+			UID:       types.UID("source-uid"),
+			Labels: map[string]string{
+				"app.kubernetes.io/instance":   "sample",
+				"app.kubernetes.io/managed-by": "Helm",
+			},
+			Annotations: map[string]string{
+				"product.example.com/team":                         "observability",
+				"meta.helm.sh/release-name":                        "product-a",
+				"argocd.argoproj.io/tracking-id":                   "product-a:dashboard",
+				"helm.sh/resource-policy":                          "keep",
+				"kubectl.kubernetes.io/last-applied-configuration": "{}",
+			},
+			OwnerReferences: []metav1.OwnerReference{{Name: "product-release"}},
+		},
+	}
+	original := source.DeepCopy()
+	controller := &ConverterController{log: logr.Discard()}
+
+	converted := controller.convertGrafanaDashboard(source)
+
+	assert.Equal(t, map[string]string{
+		converterManagedLabel:        converterManagedValue,
+		"app.kubernetes.io/instance": "sample",
+	}, converted.Labels)
+	assert.Equal(t, map[string]string{
+		"product.example.com/team": "observability",
+		sourceUIDAnnotation:        "source-uid",
+	}, converted.Annotations)
+	assert.Empty(t, converted.OwnerReferences)
+	assert.Equal(t, original, source)
+}
+
+func TestConvertGrafanaDashboardHandlesNilMetadata(t *testing.T) {
+	source := &v1alpha1.GrafanaDashboard{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sample-dashboard",
+			Namespace: "product-a",
+			UID:       types.UID("source-uid"),
 		},
 	}
 	controller := &ConverterController{log: logr.Discard()}
 
 	converted := controller.convertGrafanaDashboard(source)
 
-	assert.Equal(t, converterManagedValue, converted.Labels[converterManagedLabel])
-	assert.Equal(t, "sample", converted.Labels["product"])
-	assert.Equal(t, map[string]string{"product": "sample"}, source.Labels)
+	assert.Equal(t, map[string]string{converterManagedLabel: converterManagedValue}, converted.Labels)
+	assert.Equal(t, map[string]string{
+		sourceUIDAnnotation: "source-uid",
+	}, converted.Annotations)
+}
+
+func TestUpdateGrafanaDashboardReconcilesMetadata(t *testing.T) {
+	existing := &v1beta1.GrafanaDashboard{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sample-dashboard",
+			Namespace: "product-a",
+			Labels: map[string]string{
+				converterManagedLabel: converterManagedValue,
+				"obsolete":            "remove-me",
+			},
+			Annotations: map[string]string{
+				"obsolete":          "remove-me",
+				sourceUIDAnnotation: "source-uid",
+			},
+		},
+		Spec: v1beta1.GrafanaDashboardSpec{Json: "unchanged"},
+	}
+	client := v1beta1fake.NewSimpleClientset(existing)
+	controller := &ConverterController{log: logr.Discard(), v1beta1clientset: client}
+	oldSource := &v1alpha1.GrafanaDashboard{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        existing.Name,
+			Namespace:   existing.Namespace,
+			UID:         types.UID("source-uid"),
+			Labels:      map[string]string{"obsolete": "remove-me"},
+			Annotations: map[string]string{"obsolete": "remove-me"},
+		},
+		Spec: v1alpha1.GrafanaDashboardSpec{Json: "unchanged"},
+	}
+	newSource := oldSource.DeepCopyObject().(*v1alpha1.GrafanaDashboard)
+	newSource.Labels = map[string]string{"product": "sample"}
+	newSource.Annotations = map[string]string{"product.example.com/team": "observability"}
+
+	controller.updateGrafanaDashboard(oldSource, newSource)
+
+	actual, err := client.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existing.Namespace).Get(
+		context.Background(), existing.Name, metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{
+		converterManagedLabel: converterManagedValue,
+		"product":             "sample",
+	}, actual.Labels)
+	assert.Equal(t, map[string]string{
+		"product.example.com/team": "observability",
+		sourceUIDAnnotation:        "source-uid",
+	}, actual.Annotations)
+}
+
+func TestUpdateGrafanaDashboardRefreshesSourceIdentityAfterRecreation(t *testing.T) {
+	existing := &v1beta1.GrafanaDashboard{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sample-dashboard",
+			Namespace: "product-a",
+			Labels:    map[string]string{converterManagedLabel: converterManagedValue},
+			Annotations: map[string]string{
+				sourceUIDAnnotation: "old-source-uid",
+			},
+		},
+		Spec: v1beta1.GrafanaDashboardSpec{Json: "unchanged"},
+	}
+	client := v1beta1fake.NewSimpleClientset(existing)
+	controller := &ConverterController{log: logr.Discard(), v1beta1clientset: client}
+	oldSource := &v1alpha1.GrafanaDashboard{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      existing.Name,
+			Namespace: existing.Namespace,
+			UID:       types.UID("old-source-uid"),
+		},
+		Spec: v1alpha1.GrafanaDashboardSpec{Json: "unchanged"},
+	}
+	newSource := oldSource.DeepCopyObject().(*v1alpha1.GrafanaDashboard)
+	newSource.ObjectMeta.UID = types.UID("new-source-uid")
+
+	controller.updateGrafanaDashboard(oldSource, newSource)
+
+	actual, err := client.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existing.Namespace).Get(
+		context.Background(), existing.Name, metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "new-source-uid", actual.Annotations[sourceUIDAnnotation])
 }
 
 func TestConvertGrafanaDatasourceMarksManagedCopyWithoutMutatingSource(t *testing.T) {
