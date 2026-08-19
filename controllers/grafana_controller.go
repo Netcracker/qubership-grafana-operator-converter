@@ -1,11 +1,12 @@
 package controllers
 
 import (
-	"bufio"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
-	"regexp"
+	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -15,9 +16,12 @@ import (
 	v1beta1clientset "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned"
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/cache"
+	"sigs.k8s.io/yaml"
 )
+
+const defaultCacheSyncTimeout = 2 * time.Minute
 
 // ConverterConfig defines converter configuration for Grafana v1alpha1 to v1beta1 api versions
 type ConverterConfig struct {
@@ -33,6 +37,21 @@ type EnabledGrafanaConverter struct {
 	NotificationChannel bool `json:"notification,omitempty" yaml:"notification,omitempty"`
 }
 
+type informerFactory interface {
+	Start(stopCh <-chan struct{})
+	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
+}
+
+type scopedInformerFactory struct {
+	scope   string
+	factory informerFactory
+}
+
+type configuredInformerFactory struct {
+	scope   string
+	factory v1alpha1informers.SharedInformerFactory
+}
+
 // ConverterController - watches for grafana integreatly.org/v1alpha1 objects
 // and create\update grafana.integreatly.org/v1beta1 objects
 type ConverterController struct {
@@ -40,7 +59,10 @@ type ConverterController struct {
 	log                     logr.Logger
 	ConverterConf           ConverterConfig
 	v1beta1clientset        v1beta1clientset.Interface
-	v1alpha1InformerFactory []v1alpha1informers.SharedInformerFactory
+	v1alpha1InformerFactory []scopedInformerFactory
+	readinessMu             sync.RWMutex
+	readinessErr            error
+	cacheSyncTimeout        time.Duration
 }
 
 // NewGrafanaConverterController builder for grafana converter service
@@ -50,6 +72,7 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 		log:              log,
 		ConverterConf:    ConverterConfig{},
 		v1beta1clientset: v1beta1clientset,
+		cacheSyncTimeout: defaultCacheSyncTimeout,
 	}
 
 	converterConfig, err := ReadConfig(converterConfigPath)
@@ -61,17 +84,28 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 	log.Info(fmt.Sprintf("converter config: %+v\n", converterConfig))
 	c.ConverterConf = *converterConfig
 	if c.ConverterConf.Enable && c.ConverterConf.EnabledGrafanaConverter != (EnabledGrafanaConverter{}) {
-		namespaces := mustGetWatchNamespaces()
+		namespaces, namespaceErr := getWatchNamespaces()
+		if namespaceErr != nil {
+			return nil, fmt.Errorf("invalid watch namespace configuration: %w", namespaceErr)
+		}
+		configuredFactories := make([]configuredInformerFactory, 0, max(1, len(namespaces)))
 		if len(namespaces) == 0 {
-			c.v1alpha1InformerFactory = append(c.v1alpha1InformerFactory, v1alpha1informers.NewSharedInformerFactory(v1alpha1clientset, resyncPeriod))
+			configuredFactories = append(configuredFactories, configuredInformerFactory{
+				scope:   "cluster-wide",
+				factory: v1alpha1informers.NewSharedInformerFactory(v1alpha1clientset, resyncPeriod),
+			})
 		} else {
 			for _, ns := range namespaces {
-				c.v1alpha1InformerFactory = append(c.v1alpha1InformerFactory, v1alpha1informers.NewSharedInformerFactoryWithOptions(v1alpha1clientset, resyncPeriod, v1alpha1informers.WithNamespace(ns)))
+				configuredFactories = append(configuredFactories, configuredInformerFactory{
+					scope:   ns,
+					factory: v1alpha1informers.NewSharedInformerFactoryWithOptions(v1alpha1clientset, resyncPeriod, v1alpha1informers.WithNamespace(ns)),
+				})
 			}
 		}
 
 		if c.ConverterConf.Dashboard {
-			for _, informer := range c.v1alpha1InformerFactory {
+			for _, scopedFactory := range configuredFactories {
+				informer := scopedFactory.factory
 				if _, err = informer.Integreatly().V1alpha1().GrafanaDashboards().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 					AddFunc:    c.createGrafanaDashboard,
 					UpdateFunc: c.updateGrafanaDashboard,
@@ -82,7 +116,8 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 		}
 
 		if c.ConverterConf.Datasource {
-			for _, informer := range c.v1alpha1InformerFactory {
+			for _, scopedFactory := range configuredFactories {
+				informer := scopedFactory.factory
 				if _, err = informer.Integreatly().V1alpha1().GrafanaDataSources().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 					AddFunc:    c.createGrafanaDatasource,
 					UpdateFunc: c.updateGrafanaDatasource,
@@ -93,7 +128,8 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 		}
 
 		if c.ConverterConf.Folder {
-			for _, informer := range c.v1alpha1InformerFactory {
+			for _, scopedFactory := range configuredFactories {
+				informer := scopedFactory.factory
 				if _, err = informer.Integreatly().V1alpha1().GrafanaFolders().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 					AddFunc:    c.createGrafanaFolder,
 					UpdateFunc: c.updateGrafanaFolder,
@@ -104,7 +140,8 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 		}
 
 		if c.ConverterConf.NotificationChannel {
-			for _, informer := range c.v1alpha1InformerFactory {
+			for _, scopedFactory := range configuredFactories {
+				informer := scopedFactory.factory
 				if _, err = informer.Integreatly().V1alpha1().GrafanaNotificationChannels().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 					AddFunc:    c.createGrafanaNotificationChannel,
 					UpdateFunc: c.updateGrafanaNotificationChannel,
@@ -113,6 +150,14 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 				}
 			}
 		}
+
+		for _, configuredFactory := range configuredFactories {
+			c.v1alpha1InformerFactory = append(c.v1alpha1InformerFactory, scopedInformerFactory{
+				scope:   configuredFactory.scope,
+				factory: configuredFactory.factory,
+			})
+		}
+		c.setReadiness(fmt.Errorf("waiting for informer caches to synchronize: %s", strings.Join(c.informerScopes(), ", ")))
 	}
 
 	return c, nil
@@ -123,69 +168,96 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 func (c *ConverterController) Start(ctx context.Context) error {
 	c.log.Info("starting grafana converter")
 
-	for _, informerFactory := range c.v1alpha1InformerFactory {
-		informerFactory.Start(ctx.Done())
-		informerFactory.WaitForCacheSync(ctx.Done())
+	for _, scopedFactory := range c.v1alpha1InformerFactory {
+		scopedFactory.factory.Start(ctx.Done())
+	}
+	syncCtx, cancelSync := context.WithTimeout(ctx, c.cacheSyncTimeout)
+	defer cancelSync()
+	for _, scopedFactory := range c.v1alpha1InformerFactory {
+		failedTypes := failedCacheTypes(scopedFactory.factory.WaitForCacheSync(syncCtx.Done()))
+		if len(failedTypes) > 0 {
+			if ctx.Err() != nil {
+				return nil
+			}
+			err := fmt.Errorf("failed to synchronize informer caches for %s: %s", scopedFactory.scope, strings.Join(failedTypes, ", "))
+			c.setReadiness(err)
+			return err
+		}
 	}
 
+	c.setReadiness(nil)
 	c.log.Info("grafana converter started")
+	<-ctx.Done()
 	return nil
+}
+
+// ReadinessCheck reports whether every informer cache required by the enabled converters has synchronized.
+func (c *ConverterController) ReadinessCheck(_ *http.Request) error {
+	c.readinessMu.RLock()
+	defer c.readinessMu.RUnlock()
+	return c.readinessErr
+}
+
+func (c *ConverterController) setReadiness(err error) {
+	c.readinessMu.Lock()
+	defer c.readinessMu.Unlock()
+	c.readinessErr = err
+}
+
+func (c *ConverterController) informerScopes() []string {
+	scopes := make([]string, 0, len(c.v1alpha1InformerFactory))
+	for _, scopedFactory := range c.v1alpha1InformerFactory {
+		scopes = append(scopes, scopedFactory.scope)
+	}
+	return scopes
+}
+
+func failedCacheTypes(syncResults map[reflect.Type]bool) []string {
+	failedTypes := make([]string, 0)
+	for informerType, synced := range syncResults {
+		if !synced {
+			failedTypes = append(failedTypes, informerType.String())
+		}
+	}
+	sort.Strings(failedTypes)
+	return failedTypes
 }
 
 func ReadConfig(path string) (*ConverterConfig, error) {
 	converterConfig := &ConverterConfig{}
 
-	f, err := os.Open(path)
+	contents, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &ConverterConfig{}, nil
 		}
 		return &ConverterConfig{}, err
 	}
-	if err = yaml.NewYAMLOrJSONDecoder(bufio.NewReader(f), 100).Decode(&converterConfig); err != nil {
-		return &ConverterConfig{}, err
+	if err = yaml.UnmarshalStrict(contents, converterConfig); err != nil {
+		return &ConverterConfig{}, fmt.Errorf("decode converter config %q: %w", path, err)
+	}
+	if converterConfig.Enable && converterConfig.EnabledGrafanaConverter == (EnabledGrafanaConverter{}) {
+		return &ConverterConfig{}, fmt.Errorf("at least one converter must be enabled when conversion is enabled")
 	}
 	return converterConfig, nil
 }
 
-var (
-	// WatchNamespaceEnvVar is the constant for env variable WATCH_NAMESPACE
-	// which specifies the Namespace to watch.
-	// An empty value means the operator is running with cluster scope.
-	WatchNamespaceEnvVar = "WATCH_NAMESPACE"
-
-	validNamespaceRegex = regexp.MustCompile(`[a-z0-9]([-a-z0-9]*[a-z0-9])?`)
-	opNamespace         []string
-	initNamespace       sync.Once
-)
+// WatchNamespaceEnvVar is the constant for env variable WATCH_NAMESPACE
+// which specifies the Namespace to watch.
+// An empty value means the operator is running with cluster scope.
+const WatchNamespaceEnvVar = "WATCH_NAMESPACE"
 
 func getWatchNamespaces() ([]string, error) {
 	wns, _ := os.LookupEnv(WatchNamespaceEnvVar)
 	if len(wns) > 0 {
 		nss := strings.Split(wns, ",")
-		// validate namespace with regexp
 		for _, ns := range nss {
-			if !validNamespaceRegex.MatchString(ns) {
-				return nil, fmt.Errorf("incorrect namespace name=%q for env var=%q with value: %q must match regex: %q", ns, WatchNamespaceEnvVar, wns, validNamespaceRegex.String())
+			if validationErrors := validation.IsDNS1123Label(ns); len(validationErrors) > 0 {
+				return nil, fmt.Errorf("invalid namespace %q in %s=%q: %s", ns, WatchNamespaceEnvVar, wns, strings.Join(validationErrors, "; "))
 			}
 		}
 
 		return nss, nil
 	}
 	return nil, nil
-}
-
-// MustGetWatchNamespaces returns a list of namespaces to be watched by operator
-// Operator don't perform any cluster wide API calls if namespaces not empty
-// in case of empty list it performs only cluster-wide api calls
-func mustGetWatchNamespaces() []string {
-	initNamespace.Do(func() {
-		nss, err := getWatchNamespaces()
-		if err != nil {
-			panic(err)
-		}
-		opNamespace = nss
-	})
-
-	return opNamespace
 }
