@@ -44,6 +44,8 @@ func TestNewGrafanaConverterControllerConfiguresInformerScopes(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedScopes, controller.informerScopes())
+			assert.Len(t, controller.v1beta1InformerFactory, len(test.expectedScopes))
+			assert.NotNil(t, controller.dashboardQueue)
 			readinessErr := controller.ReadinessCheck(nil)
 			require.Error(t, readinessErr)
 			for _, scope := range test.expectedScopes {
