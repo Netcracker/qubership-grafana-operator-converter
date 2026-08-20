@@ -14,14 +14,22 @@ import (
 	v1alpha1clientset "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned"
 	v1alpha1informers "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/informers/externalversions"
 	v1beta1clientset "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned"
+	v1beta1informers "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/informers/externalversions"
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/yaml"
 )
 
-const defaultCacheSyncTimeout = 2 * time.Minute
+const (
+	defaultCacheSyncTimeout        = 2 * time.Minute
+	defaultDashboardAPITimeout     = 30 * time.Second
+	dashboardRetryInitialBackoff   = 5 * time.Millisecond
+	dashboardRetryMaximumBackoff   = time.Minute
+	dashboardReconciliationWorkers = 1
+)
 
 // ConverterConfig defines converter configuration for Grafana v1alpha1 to v1beta1 api versions
 type ConverterConfig struct {
@@ -52,27 +60,37 @@ type configuredInformerFactory struct {
 	factory v1alpha1informers.SharedInformerFactory
 }
 
-// ConverterController - watches for grafana integreatly.org/v1alpha1 objects
-// and create\update grafana.integreatly.org/v1beta1 objects
+type configuredV1beta1InformerFactory struct {
+	scope   string
+	factory v1beta1informers.SharedInformerFactory
+}
+
+// ConverterController watches legacy Grafana resources and reconciles their v1beta1 replacements.
 type ConverterController struct {
 	ctx                     context.Context
 	log                     logr.Logger
 	ConverterConf           ConverterConfig
+	v1alpha1clientset       v1alpha1clientset.Interface
 	v1beta1clientset        v1beta1clientset.Interface
 	v1alpha1InformerFactory []scopedInformerFactory
+	v1beta1InformerFactory  []scopedInformerFactory
+	dashboardQueue          workqueue.TypedRateLimitingInterface[dashboardQueueItem]
 	readinessMu             sync.RWMutex
 	readinessErr            error
 	cacheSyncTimeout        time.Duration
+	apiTimeout              time.Duration
 }
 
 // NewGrafanaConverterController builder for grafana converter service
 func NewGrafanaConverterController(ctx context.Context, converterConfigPath string, v1alpha1clientset v1alpha1clientset.Interface, v1beta1clientset v1beta1clientset.Interface, resyncPeriod time.Duration, log logr.Logger) (*ConverterController, error) {
 	c := &ConverterController{
-		ctx:              ctx,
-		log:              log,
-		ConverterConf:    ConverterConfig{},
-		v1beta1clientset: v1beta1clientset,
-		cacheSyncTimeout: defaultCacheSyncTimeout,
+		ctx:               ctx,
+		log:               log,
+		ConverterConf:     ConverterConfig{},
+		v1alpha1clientset: v1alpha1clientset,
+		v1beta1clientset:  v1beta1clientset,
+		cacheSyncTimeout:  defaultCacheSyncTimeout,
+		apiTimeout:        defaultDashboardAPITimeout,
 	}
 
 	converterConfig, err := ReadConfig(converterConfigPath)
@@ -104,14 +122,47 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 		}
 
 		if c.ConverterConf.Dashboard {
+			c.dashboardQueue = newDashboardQueue()
 			for _, scopedFactory := range configuredFactories {
 				informer := scopedFactory.factory
 				if _, err = informer.Integreatly().V1alpha1().GrafanaDashboards().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-					AddFunc:    c.createGrafanaDashboard,
-					UpdateFunc: c.updateGrafanaDashboard,
+					AddFunc:    c.enqueueSourceDashboard,
+					UpdateFunc: func(_, newObject any) { c.enqueueSourceDashboard(newObject) },
+					DeleteFunc: c.enqueueDeletedSourceDashboard,
 				}); err != nil {
 					return nil, fmt.Errorf("cannot add grafana dashboards handler: %w", err)
 				}
+			}
+
+			configuredV1beta1Factories := make([]configuredV1beta1InformerFactory, 0, len(configuredFactories))
+			for _, configuredFactory := range configuredFactories {
+				var factory v1beta1informers.SharedInformerFactory
+				if configuredFactory.scope == "cluster-wide" {
+					factory = v1beta1informers.NewSharedInformerFactory(v1beta1clientset, resyncPeriod)
+				} else {
+					factory = v1beta1informers.NewSharedInformerFactoryWithOptions(
+						v1beta1clientset,
+						resyncPeriod,
+						v1beta1informers.WithNamespace(configuredFactory.scope),
+					)
+				}
+				if _, err = factory.Observability().V1beta1().GrafanaDashboards().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+					AddFunc:    c.enqueueTargetDashboard,
+					UpdateFunc: c.enqueueUpdatedTargetDashboard,
+					DeleteFunc: c.enqueueDeletedTargetDashboard,
+				}); err != nil {
+					return nil, fmt.Errorf("cannot add target grafana dashboards handler: %w", err)
+				}
+				configuredV1beta1Factories = append(configuredV1beta1Factories, configuredV1beta1InformerFactory{
+					scope:   configuredFactory.scope,
+					factory: factory,
+				})
+			}
+			for _, configuredFactory := range configuredV1beta1Factories {
+				c.v1beta1InformerFactory = append(c.v1beta1InformerFactory, scopedInformerFactory{
+					scope:   configuredFactory.scope,
+					factory: configuredFactory.factory,
+				})
 			}
 		}
 
@@ -168,12 +219,12 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 func (c *ConverterController) Start(ctx context.Context) error {
 	c.log.Info("starting grafana converter")
 
-	for _, scopedFactory := range c.v1alpha1InformerFactory {
+	for _, scopedFactory := range c.informerFactories() {
 		scopedFactory.factory.Start(ctx.Done())
 	}
 	syncCtx, cancelSync := context.WithTimeout(ctx, c.cacheSyncTimeout)
 	defer cancelSync()
-	for _, scopedFactory := range c.v1alpha1InformerFactory {
+	for _, scopedFactory := range c.informerFactories() {
 		failedTypes := failedCacheTypes(scopedFactory.factory.WaitForCacheSync(syncCtx.Done()))
 		if len(failedTypes) > 0 {
 			if ctx.Err() != nil {
@@ -187,7 +238,22 @@ func (c *ConverterController) Start(ctx context.Context) error {
 
 	c.setReadiness(nil)
 	c.log.Info("grafana converter started")
+
+	var workers sync.WaitGroup
+	if c.dashboardQueue != nil {
+		for range dashboardReconciliationWorkers {
+			workers.Add(1)
+			go func() {
+				defer workers.Done()
+				c.runDashboardWorker(ctx)
+			}()
+		}
+	}
 	<-ctx.Done()
+	if c.dashboardQueue != nil {
+		c.dashboardQueue.ShutDown()
+		workers.Wait()
+	}
 	return nil
 }
 
@@ -205,11 +271,36 @@ func (c *ConverterController) setReadiness(err error) {
 }
 
 func (c *ConverterController) informerScopes() []string {
-	scopes := make([]string, 0, len(c.v1alpha1InformerFactory))
-	for _, scopedFactory := range c.v1alpha1InformerFactory {
-		scopes = append(scopes, scopedFactory.scope)
+	uniqueScopes := make(map[string]struct{})
+	for _, scopedFactory := range c.informerFactories() {
+		uniqueScopes[scopedFactory.scope] = struct{}{}
 	}
+	scopes := make([]string, 0, len(uniqueScopes))
+	for scope := range uniqueScopes {
+		scopes = append(scopes, scope)
+	}
+	sort.Strings(scopes)
 	return scopes
+}
+
+func (c *ConverterController) informerFactories() []scopedInformerFactory {
+	factories := make([]scopedInformerFactory, 0, len(c.v1alpha1InformerFactory)+len(c.v1beta1InformerFactory))
+	factories = append(factories, c.v1alpha1InformerFactory...)
+	factories = append(factories, c.v1beta1InformerFactory...)
+	return factories
+}
+
+func newDashboardQueue() workqueue.TypedRateLimitingInterface[dashboardQueueItem] {
+	return workqueue.NewTypedRateLimitingQueueWithConfig(newDashboardRateLimiter(), workqueue.TypedRateLimitingQueueConfig[dashboardQueueItem]{
+		Name: "grafana-dashboard-conversion",
+	})
+}
+
+func newDashboardRateLimiter() workqueue.TypedRateLimiter[dashboardQueueItem] {
+	return workqueue.NewTypedItemExponentialFailureRateLimiter[dashboardQueueItem](
+		dashboardRetryInitialBackoff,
+		dashboardRetryMaximumBackoff,
+	)
 }
 
 func failedCacheTypes(syncResults map[reflect.Type]bool) []string {

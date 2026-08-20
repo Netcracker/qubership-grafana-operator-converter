@@ -16,6 +16,7 @@ rules:
     resources:
       - grafanadashboards
     verbs:
+      - get
       - list
       - watch
   - apiGroups:
@@ -24,8 +25,11 @@ rules:
       - grafanadashboards
     verbs:
       - create
+      - delete
       - get
+      - list
       - update
+      - watch
   - apiGroups:
       - integreatly.org
     resources:

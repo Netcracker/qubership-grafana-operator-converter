@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	v1alpha1fake "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned/fake"
 	v1beta1fake "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/fake"
 	"github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1"
 	"github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1beta1"
@@ -98,8 +99,6 @@ func TestUpdateGrafanaDashboardReconcilesMetadata(t *testing.T) {
 		},
 		Spec: v1beta1.GrafanaDashboardSpec{Json: "unchanged"},
 	}
-	client := v1beta1fake.NewSimpleClientset(existing)
-	controller := &ConverterController{log: logr.Discard(), v1beta1clientset: client}
 	oldSource := &v1alpha1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        existing.Name,
@@ -113,10 +112,20 @@ func TestUpdateGrafanaDashboardReconcilesMetadata(t *testing.T) {
 	newSource := oldSource.DeepCopyObject().(*v1alpha1.GrafanaDashboard)
 	newSource.Labels = map[string]string{"product": "sample"}
 	newSource.Annotations = map[string]string{"product.example.com/team": "observability"}
+	alphaClient := v1alpha1fake.NewSimpleClientset(newSource)
+	betaClient := v1beta1fake.NewSimpleClientset(existing)
+	controller := &ConverterController{
+		log:               logr.Discard(),
+		v1alpha1clientset: alphaClient,
+		v1beta1clientset:  betaClient,
+	}
 
-	controller.updateGrafanaDashboard(oldSource, newSource)
+	require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+		Namespace: newSource.Namespace,
+		Name:      newSource.Name,
+	}))
 
-	actual, err := client.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existing.Namespace).Get(
+	actual, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existing.Namespace).Get(
 		context.Background(), existing.Name, metav1.GetOptions{},
 	)
 	require.NoError(t, err)
@@ -142,8 +151,6 @@ func TestUpdateGrafanaDashboardRefreshesSourceIdentityAfterRecreation(t *testing
 		},
 		Spec: v1beta1.GrafanaDashboardSpec{Json: "unchanged"},
 	}
-	client := v1beta1fake.NewSimpleClientset(existing)
-	controller := &ConverterController{log: logr.Discard(), v1beta1clientset: client}
 	oldSource := &v1alpha1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      existing.Name,
@@ -154,10 +161,20 @@ func TestUpdateGrafanaDashboardRefreshesSourceIdentityAfterRecreation(t *testing
 	}
 	newSource := oldSource.DeepCopyObject().(*v1alpha1.GrafanaDashboard)
 	newSource.ObjectMeta.UID = types.UID("new-source-uid")
+	alphaClient := v1alpha1fake.NewSimpleClientset(newSource)
+	betaClient := v1beta1fake.NewSimpleClientset(existing)
+	controller := &ConverterController{
+		log:               logr.Discard(),
+		v1alpha1clientset: alphaClient,
+		v1beta1clientset:  betaClient,
+	}
 
-	controller.updateGrafanaDashboard(oldSource, newSource)
+	require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+		Namespace: newSource.Namespace,
+		Name:      newSource.Name,
+	}))
 
-	actual, err := client.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existing.Namespace).Get(
+	actual, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existing.Namespace).Get(
 		context.Background(), existing.Name, metav1.GetOptions{},
 	)
 	require.NoError(t, err)
@@ -221,21 +238,24 @@ func TestConvertGrafanaNotificationChannelMarksManagedCopyWithoutMutatingSource(
 	assert.Equal(t, map[string]string{"product": "sample"}, source.Labels)
 }
 
-func TestCreateGrafanaDashboardDoesNotAdoptUnmarkedCollision(t *testing.T) {
+func TestReconcileGrafanaDashboardDoesNotAdoptUnmarkedCollision(t *testing.T) {
 	existing := &v1beta1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: "sample-dashboard", Namespace: "product-a"},
 		Spec:       v1beta1.GrafanaDashboardSpec{Json: "foreign"},
 	}
-	client := v1beta1fake.NewSimpleClientset(existing)
-	controller := &ConverterController{log: logr.Discard(), v1beta1clientset: client}
 	source := &v1alpha1.GrafanaDashboard{
-		ObjectMeta: metav1.ObjectMeta{Name: existing.Name, Namespace: existing.Namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: existing.Name, Namespace: existing.Namespace, UID: types.UID("source-uid")},
 		Spec:       v1alpha1.GrafanaDashboardSpec{Json: "converted"},
 	}
+	alphaClient := v1alpha1fake.NewSimpleClientset(source)
+	betaClient := v1beta1fake.NewSimpleClientset(existing)
+	controller := &ConverterController{log: logr.Discard(), v1alpha1clientset: alphaClient, v1beta1clientset: betaClient}
 
-	controller.createGrafanaDashboard(source)
+	err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{Namespace: source.Namespace, Name: source.Name})
 
-	actual, err := client.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existing.Namespace).Get(
+	require.Error(t, err)
+	assert.True(t, isPermanentDashboardError(err))
+	actual, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existing.Namespace).Get(
 		context.Background(), existing.Name, metav1.GetOptions{},
 	)
 	require.NoError(t, err)
@@ -243,7 +263,7 @@ func TestCreateGrafanaDashboardDoesNotAdoptUnmarkedCollision(t *testing.T) {
 	assert.NotContains(t, actual.Labels, converterManagedLabel)
 }
 
-func TestCreateGrafanaDashboardUpdatesMarkedCopy(t *testing.T) {
+func TestReconcileGrafanaDashboardUpdatesMarkedCopy(t *testing.T) {
 	existing := &v1beta1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "sample-dashboard",
@@ -252,16 +272,17 @@ func TestCreateGrafanaDashboardUpdatesMarkedCopy(t *testing.T) {
 		},
 		Spec: v1beta1.GrafanaDashboardSpec{Json: "old"},
 	}
-	client := v1beta1fake.NewSimpleClientset(existing)
-	controller := &ConverterController{log: logr.Discard(), v1beta1clientset: client}
 	source := &v1alpha1.GrafanaDashboard{
-		ObjectMeta: metav1.ObjectMeta{Name: existing.Name, Namespace: existing.Namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: existing.Name, Namespace: existing.Namespace, UID: types.UID("source-uid")},
 		Spec:       v1alpha1.GrafanaDashboardSpec{Json: "new"},
 	}
+	alphaClient := v1alpha1fake.NewSimpleClientset(source)
+	betaClient := v1beta1fake.NewSimpleClientset(existing)
+	controller := &ConverterController{log: logr.Discard(), v1alpha1clientset: alphaClient, v1beta1clientset: betaClient}
 
-	controller.createGrafanaDashboard(source)
+	require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{Namespace: source.Namespace, Name: source.Name}))
 
-	actual, err := client.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existing.Namespace).Get(
+	actual, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existing.Namespace).Get(
 		context.Background(), existing.Name, metav1.GetOptions{},
 	)
 	require.NoError(t, err)
@@ -269,7 +290,7 @@ func TestCreateGrafanaDashboardUpdatesMarkedCopy(t *testing.T) {
 	assert.Equal(t, converterManagedValue, actual.Labels[converterManagedLabel])
 }
 
-func TestCreateGrafanaDashboardHandlesUpdateErrorWithoutPanic(t *testing.T) {
+func TestReconcileGrafanaDashboardReturnsUpdateError(t *testing.T) {
 	existing := &v1beta1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "sample-dashboard",
@@ -278,19 +299,21 @@ func TestCreateGrafanaDashboardHandlesUpdateErrorWithoutPanic(t *testing.T) {
 		},
 		Spec: v1beta1.GrafanaDashboardSpec{Json: "old"},
 	}
-	client := v1beta1fake.NewSimpleClientset(existing)
-	client.PrependReactor("update", "grafanadashboards", func(k8stesting.Action) (bool, runtime.Object, error) {
+	betaClient := v1beta1fake.NewSimpleClientset(existing)
+	betaClient.PrependReactor("update", "grafanadashboards", func(k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, errors.New("API update failed")
 	})
-	controller := &ConverterController{log: logr.Discard(), v1beta1clientset: client}
 	source := &v1alpha1.GrafanaDashboard{
-		ObjectMeta: metav1.ObjectMeta{Name: existing.Name, Namespace: existing.Namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: existing.Name, Namespace: existing.Namespace, UID: types.UID("source-uid")},
 		Spec:       v1alpha1.GrafanaDashboardSpec{Json: "new"},
 	}
+	alphaClient := v1alpha1fake.NewSimpleClientset(source)
+	controller := &ConverterController{log: logr.Discard(), v1alpha1clientset: alphaClient, v1beta1clientset: betaClient}
 
-	assert.NotPanics(t, func() {
-		controller.createGrafanaDashboard(source)
-	})
+	err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{Namespace: source.Namespace, Name: source.Name})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "API update failed")
 }
 
 func TestCreateGrafanaDatasourceDoesNotAdoptUnmarkedCollision(t *testing.T) {

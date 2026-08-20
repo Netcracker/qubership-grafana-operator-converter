@@ -16,6 +16,7 @@ rules:
     resources:
       - grafanadashboards
     verbs:
+      - get
       - list
       - watch
   - apiGroups:
@@ -24,8 +25,11 @@ rules:
       - grafanadashboards
     verbs:
       - create
+      - delete
       - get
+      - list
       - update
+      - watch
 ---
 # Source: qubership-grafana-operator-converter/templates/rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
