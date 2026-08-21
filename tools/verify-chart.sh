@@ -168,8 +168,8 @@ helm template converter "${chart_dir}" \
 	--set leaderElect=true \
 	>"${render_dir}/deployment-leader-election.yaml"
 
-grep -A1 '^  strategy:$' "${render_dir}/deployment-leader-election.yaml" \
-	| grep -q '^    type: Recreate$'
+grep -A1 '^  strategy:$' "${render_dir}/deployment-leader-election.yaml" |
+	grep -q '^    type: Recreate$'
 
 helm template converter "${chart_dir}" \
 	--namespace monitoring \
