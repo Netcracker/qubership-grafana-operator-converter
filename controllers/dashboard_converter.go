@@ -1,16 +1,10 @@
 package controllers
 
 import (
-	"context"
 	"fmt"
-	"maps"
 
 	"github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1"
 	"github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1beta1"
-	"github.com/go-logr/logr"
-	apiequality "k8s.io/apimachinery/pkg/api/equality"
-	apierrs "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 )
 
@@ -19,118 +13,12 @@ const (
 	// newDatasourceUID = "$datasource"
 )
 
-// createGrafanaDashboard converts GrafanaDashboard v1alpha1 to v1beta1
-func (c *ConverterController) createGrafanaDashboard(dashboard interface{}) {
-	alphaDashboard, ok := dashboard.(*v1alpha1.GrafanaDashboard)
-	if !ok {
-		c.log.Error(fmt.Errorf("type assertion failed"), "cannot cast to v1alpha1 GrafanaDashboard")
-		return
-	}
-	l := c.log.WithValues("kind", v1alpha1.GrafanaDashboardKind, "name", alphaDashboard.Name, "ns", alphaDashboard.Namespace)
-
-	cr := c.convertGrafanaDashboard(alphaDashboard)
-
-	l.Info("start creating GrafanaDashboard")
-	betaDashboard, err := c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDashboards(cr.Namespace).Create(context.Background(), cr, metav1.CreateOptions{})
-	if err != nil {
-		if apierrs.IsAlreadyExists(err) {
-			c.updateGrafanaDashboard(nil, cr)
-			return
-		}
-		l.Error(err, "cannot create GrafanaDashboard v1beta1 from v1alpha1")
-		return
-	}
-	l.Info(fmt.Sprintf("GrafanaDashboard %v/%v uid:%v has been created",
-		betaDashboard.GetNamespace(),
-		betaDashboard.GetName(),
-		betaDashboard.GetUID()))
-}
-
-// updateGrafanaDashboard converts GrafanaDashboard v1alpha1 to v1beta1
-func (c *ConverterController) updateGrafanaDashboard(old, new interface{}) {
-	var v1beta1Dashboard *v1beta1.GrafanaDashboard
-	var l logr.Logger
-	dashboard, ok := new.(*v1alpha1.GrafanaDashboard)
-	if ok && old != nil {
-		l = c.log.WithValues("kind", v1alpha1.GrafanaDashboardKind, "name", dashboard.Name, "ns", dashboard.Namespace)
-
-		var alphaDashboardOld *v1alpha1.GrafanaDashboard
-		alphaDashboardOld, ok = old.(*v1alpha1.GrafanaDashboard)
-		if !ok {
-			l.Error(fmt.Errorf("type assertion failed"), "cannot cast to v1alpha1 GrafanaDashboard")
-			return
-		}
-
-		if apiequality.Semantic.DeepEqual(alphaDashboardOld.Spec, dashboard.Spec) {
-			l.Info("no diffs in GrafanaDashboards")
-			return
-		}
-		l.Info(fmt.Sprintf("start converting GrafanaDashboard %s to %s", v1alpha1.GroupVersion.String(), v1beta1.GroupVersion.String()))
-		v1beta1Dashboard = c.convertGrafanaDashboard(dashboard)
-	} else {
-		v1beta1Dashboard, ok = new.(*v1beta1.GrafanaDashboard)
-		if !ok {
-			l.Error(fmt.Errorf("type assertion failed"), "cannot cast to v1beta1 GrafanaDashboard")
-			return
-		}
-		l = c.log.WithValues("kind", v1alpha1.GrafanaDashboardKind, "name", v1beta1Dashboard.Name, "ns", v1beta1Dashboard.Namespace)
-	}
-
-	ctx := context.Background()
-	existingDashboard, err := c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDashboards(v1beta1Dashboard.Namespace).Get(ctx, v1beta1Dashboard.Name, metav1.GetOptions{})
-	if err != nil {
-		if apierrs.IsNotFound(err) {
-			var createdDashboard *v1beta1.GrafanaDashboard
-			if createdDashboard, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDashboards(v1beta1Dashboard.Namespace).Create(ctx, v1beta1Dashboard, metav1.CreateOptions{}); err == nil {
-				l.Info(fmt.Sprintf("GrafanaDashboard %v/%v uid:%v has been created",
-					createdDashboard.GetNamespace(),
-					createdDashboard.GetName(),
-					createdDashboard.GetUID()))
-				return
-			}
-		}
-		l.Error(err, "cannot get existing GrafanaDashboard")
-		return
-	}
-	if !isConverterManaged(existingDashboard) {
-		l.Error(fmt.Errorf("resource is not managed by the converter"), "cannot update existing GrafanaDashboard")
-		return
-	}
-
-	if apiequality.Semantic.DeepEqual(existingDashboard.Spec, v1beta1Dashboard.Spec) {
-		l.Info("no updates in GrafanaDashboards")
-		return
-	}
-
-	existingDashboard.Spec = v1beta1Dashboard.Spec
-	if existingDashboard.Annotations == nil {
-		existingDashboard.Annotations = make(map[string]string, len(v1beta1Dashboard.Annotations))
-	}
-	maps.Copy(existingDashboard.Annotations, v1beta1Dashboard.Annotations)
-	if existingDashboard.Labels == nil {
-		existingDashboard.Labels = make(map[string]string, len(v1beta1Dashboard.Labels))
-	}
-	maps.Copy(existingDashboard.Labels, v1beta1Dashboard.Labels)
-	existingDashboard.OwnerReferences = v1beta1Dashboard.OwnerReferences
-
-	var updatedDashboard *v1beta1.GrafanaDashboard
-	updatedDashboard, err = c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDashboards(existingDashboard.Namespace).Update(ctx, existingDashboard, metav1.UpdateOptions{})
-	if err != nil {
-		l.Error(err, "cannot update GrafanaDashboard")
-		return
-	}
-	l.Info(fmt.Sprintf("GrafanaDashboard %v/%v uid:%v has been updated",
-		updatedDashboard.GetNamespace(),
-		updatedDashboard.GetName(),
-		updatedDashboard.GetUID()))
-}
-
 // convertGrafanaDashboard creates GrafanaDashboard v1beta1 from GrafanaDashboard v1alpha1
 func (c *ConverterController) convertGrafanaDashboard(src *v1alpha1.GrafanaDashboard) (dst *v1beta1.GrafanaDashboard) {
 	c.log.Info(fmt.Sprintf("%s/%s conversion from %s to %s requested", src.Namespace, src.Name, v1alpha1.GroupVersion.String(), v1beta1.GroupVersion.String()))
 
 	dst = &v1beta1.GrafanaDashboard{
-		ObjectMeta: convertedObjectMeta(src, src.Name),
+		ObjectMeta: convertedGrafanaDashboardMeta(src),
 	}
 
 	// Spec conversion
