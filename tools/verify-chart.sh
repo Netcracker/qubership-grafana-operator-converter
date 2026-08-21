@@ -161,3 +161,32 @@ disabled_render="${render_dir}/converter-disabled.yaml"
 [[ $(grep -c '^kind: RoleBinding$' "${disabled_render}") -eq 0 ]]
 [[ $(grep -c '^kind: ClusterRole$' "${disabled_render}") -eq 0 ]]
 [[ $(grep -c '^kind: ClusterRoleBinding$' "${disabled_render}") -eq 0 ]]
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/deployment.yaml \
+	--set leaderElect=true \
+	>"${render_dir}/deployment-leader-election.yaml"
+
+grep -A1 '^  strategy:$' "${render_dir}/deployment-leader-election.yaml" |
+	grep -q '^    type: Recreate$'
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/deployment.yaml \
+	>"${render_dir}/deployment-default-config.yaml"
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/deployment.yaml \
+	--set grafana.converter.dashboard=false \
+	>"${render_dir}/deployment-changed-config.yaml"
+
+default_config_checksum=$(awk '$1 == "checksum/grafana-resources-config:" { print $2 }' \
+	"${render_dir}/deployment-default-config.yaml")
+changed_config_checksum=$(awk '$1 == "checksum/grafana-resources-config:" { print $2 }' \
+	"${render_dir}/deployment-changed-config.yaml")
+
+[[ -n "${default_config_checksum}" ]]
+[[ -n "${changed_config_checksum}" ]]
+[[ "${default_config_checksum}" != "${changed_config_checksum}" ]]

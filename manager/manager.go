@@ -159,11 +159,12 @@ func RunManager(ctx context.Context) (err error) {
 		return err
 	}
 
-	converterController, err := converterController.NewGrafanaConverterController(ctx, *converterConfigPath, v1alpha1Client, v1beta1Client, *resyncPeriod, ctrl.Log.WithName("ConverterController"))
+	converter, err := converterController.NewGrafanaConverterController(ctx, *converterConfigPath, v1alpha1Client, v1beta1Client, *resyncPeriod, ctrl.Log.WithName("ConverterController"))
 	if err != nil {
 		setupLog.Error(err, "cannot setup grafana CRD converter")
-	} else if converterController.ConverterConf.Enable {
-		if err = mgr.Add(converterController); err != nil {
+		return err
+	} else if converter.ConverterConf.Enable {
+		if err = mgr.Add(converter); err != nil {
 			setupLog.Error(err, "cannot add runnable")
 			return err
 		}
@@ -176,6 +177,12 @@ func RunManager(ctx context.Context) (err error) {
 	if err = mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		return err
+	}
+	if converter.ConverterConf.Enable {
+		if err = mgr.AddReadyzCheck("grafana-converter", converter.ReadinessCheck); err != nil {
+			setupLog.Error(err, "unable to set up grafana converter readiness check")
+			return err
+		}
 	}
 
 	setupLog.Info("starting manager")
