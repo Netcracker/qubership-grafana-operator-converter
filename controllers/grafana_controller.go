@@ -36,6 +36,7 @@ const (
 	dashboardRetryMaximumBackoff            = time.Minute
 	dashboardReconciliationWorkers          = 1
 	defaultGzipConfigMapMaxDecompressedSize = 32 * 1024 * 1024
+	clusterWideScope                        = "cluster-wide"
 )
 
 var configMapGroupVersionResource = schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
@@ -56,6 +57,14 @@ type EnabledGrafanaConverter struct {
 	NotificationChannel bool `json:"notification,omitempty" yaml:"notification,omitempty"`
 }
 
+// ConverterClients groups the Kubernetes clients used by the converter.
+type ConverterClients struct {
+	V1alpha1 v1alpha1clientset.Interface
+	V1beta1  v1beta1clientset.Interface
+	Core     kubernetes.Interface
+	Metadata metadata.Interface
+}
+
 type informerFactory interface {
 	Start(stopCh <-chan struct{})
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
@@ -69,11 +78,6 @@ type scopedInformerFactory struct {
 type configuredInformerFactory struct {
 	scope   string
 	factory v1alpha1informers.SharedInformerFactory
-}
-
-type configuredV1beta1InformerFactory struct {
-	scope   string
-	factory v1beta1informers.SharedInformerFactory
 }
 
 type singleInformerFactory struct {
@@ -110,15 +114,15 @@ type ConverterController struct {
 	gzipConfigMapMaxDecompressedSize int64
 }
 
-// NewGrafanaConverterController builder for grafana converter service
-func NewGrafanaConverterController(ctx context.Context, converterConfigPath string, v1alpha1clientset v1alpha1clientset.Interface, v1beta1clientset v1beta1clientset.Interface, coreClientset kubernetes.Interface, metadataClient metadata.Interface, resyncPeriod time.Duration, log logr.Logger) (*ConverterController, error) {
+// NewGrafanaConverterController builds the Grafana converter service.
+func NewGrafanaConverterController(ctx context.Context, converterConfigPath string, clients ConverterClients, resyncPeriod time.Duration, log logr.Logger) (*ConverterController, error) {
 	c := &ConverterController{
 		ctx:               ctx,
 		log:               log,
 		ConverterConf:     ConverterConfig{},
-		v1alpha1clientset: v1alpha1clientset,
-		v1beta1clientset:  v1beta1clientset,
-		coreClientset:     coreClientset,
+		v1alpha1clientset: clients.V1alpha1,
+		v1beta1clientset:  clients.V1beta1,
+		coreClientset:     clients.Core,
 		cacheSyncTimeout:  defaultCacheSyncTimeout,
 		apiTimeout:        defaultDashboardAPITimeout,
 	}
@@ -136,155 +140,203 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 	log.Info(fmt.Sprintf("converter config: %+v\n", converterConfig))
 	c.ConverterConf = *converterConfig
 	c.gzipConfigMapMaxDecompressedSize = gzipConfigMapMaxDecompressedSize
-	if c.ConverterConf.Enable && c.ConverterConf.EnabledGrafanaConverter != (EnabledGrafanaConverter{}) {
-		namespaces, namespaceErr := getWatchNamespaces()
-		if namespaceErr != nil {
-			return nil, fmt.Errorf("invalid watch namespace configuration: %w", namespaceErr)
-		}
-		configuredFactories := make([]configuredInformerFactory, 0, max(1, len(namespaces)))
-		if len(namespaces) == 0 {
-			configuredFactories = append(configuredFactories, configuredInformerFactory{
-				scope:   "cluster-wide",
-				factory: v1alpha1informers.NewSharedInformerFactory(v1alpha1clientset, resyncPeriod),
-			})
-		} else {
-			for _, ns := range namespaces {
-				configuredFactories = append(configuredFactories, configuredInformerFactory{
-					scope:   ns,
-					factory: v1alpha1informers.NewSharedInformerFactoryWithOptions(v1alpha1clientset, resyncPeriod, v1alpha1informers.WithNamespace(ns)),
-				})
-			}
-		}
-
-		if c.ConverterConf.Dashboard {
-			c.dashboardQueue = newDashboardQueue()
-			for _, scopedFactory := range configuredFactories {
-				informer := scopedFactory.factory
-				dashboardInformer := informer.Integreatly().V1alpha1().GrafanaDashboards().Informer()
-				if err = dashboardInformer.AddIndexers(cache.Indexers{
-					gzipConfigMapReferenceIndex: indexDashboardByGzipConfigMapReference,
-				}); err != nil {
-					return nil, fmt.Errorf("cannot index GrafanaDashboards by gzipConfigMapRef: %w", err)
-				}
-				if _, err = dashboardInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-					AddFunc:    c.enqueueSourceDashboard,
-					UpdateFunc: func(_, newObject any) { c.enqueueSourceDashboard(newObject) },
-				}); err != nil {
-					return nil, fmt.Errorf("cannot add grafana dashboards handler: %w", err)
-				}
-
-				configMapNamespace := metav1.NamespaceAll
-				if scopedFactory.scope != "cluster-wide" {
-					configMapNamespace = scopedFactory.scope
-				}
-				configMapInformer := metadatainformer.NewFilteredMetadataInformer(
-					metadataClient,
-					configMapGroupVersionResource,
-					configMapNamespace,
-					resyncPeriod,
-					cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
-					nil,
-				).Informer()
-				if _, err = configMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-					AddFunc: func(object any) {
-						c.enqueueDashboardsForConfigMap(dashboardInformer.GetIndexer(), object)
-					},
-					UpdateFunc: func(_, newObject any) {
-						c.enqueueDashboardsForConfigMap(dashboardInformer.GetIndexer(), newObject)
-					},
-					DeleteFunc: func(object any) {
-						c.enqueueDashboardsForConfigMap(dashboardInformer.GetIndexer(), object)
-					},
-				}); err != nil {
-					return nil, fmt.Errorf("cannot add ConfigMap handler for gzipConfigMapRef: %w", err)
-				}
-				c.configMapInformerFactory = append(c.configMapInformerFactory, scopedInformerFactory{
-					scope: scopedFactory.scope,
-					factory: &singleInformerFactory{
-						informer: configMapInformer,
-						typeName: reflect.TypeOf(&metav1.PartialObjectMetadata{}),
-					},
-				})
-			}
-
-			configuredV1beta1Factories := make([]configuredV1beta1InformerFactory, 0, len(configuredFactories))
-			for _, configuredFactory := range configuredFactories {
-				var factory v1beta1informers.SharedInformerFactory
-				if configuredFactory.scope == "cluster-wide" {
-					factory = v1beta1informers.NewSharedInformerFactory(v1beta1clientset, resyncPeriod)
-				} else {
-					factory = v1beta1informers.NewSharedInformerFactoryWithOptions(
-						v1beta1clientset,
-						resyncPeriod,
-						v1beta1informers.WithNamespace(configuredFactory.scope),
-					)
-				}
-				if _, err = factory.Observability().V1beta1().GrafanaDashboards().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-					AddFunc:    c.enqueueTargetDashboard,
-					UpdateFunc: c.enqueueUpdatedTargetDashboard,
-					DeleteFunc: c.enqueueDeletedTargetDashboard,
-				}); err != nil {
-					return nil, fmt.Errorf("cannot add target grafana dashboards handler: %w", err)
-				}
-				configuredV1beta1Factories = append(configuredV1beta1Factories, configuredV1beta1InformerFactory{
-					scope:   configuredFactory.scope,
-					factory: factory,
-				})
-			}
-			for _, configuredFactory := range configuredV1beta1Factories {
-				c.v1beta1InformerFactory = append(c.v1beta1InformerFactory, scopedInformerFactory{
-					scope:   configuredFactory.scope,
-					factory: configuredFactory.factory,
-				})
-			}
-		}
-
-		if c.ConverterConf.Datasource {
-			for _, scopedFactory := range configuredFactories {
-				informer := scopedFactory.factory
-				if _, err = informer.Integreatly().V1alpha1().GrafanaDataSources().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-					AddFunc:    c.createGrafanaDatasource,
-					UpdateFunc: c.updateGrafanaDatasource,
-				}); err != nil {
-					return nil, fmt.Errorf("cannot add grafana datasource handler: %w", err)
-				}
-			}
-		}
-
-		if c.ConverterConf.Folder {
-			for _, scopedFactory := range configuredFactories {
-				informer := scopedFactory.factory
-				if _, err = informer.Integreatly().V1alpha1().GrafanaFolders().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-					AddFunc:    c.createGrafanaFolder,
-					UpdateFunc: c.updateGrafanaFolder,
-				}); err != nil {
-					return nil, fmt.Errorf("cannot add grafana folder handler: %w", err)
-				}
-			}
-		}
-
-		if c.ConverterConf.NotificationChannel {
-			for _, scopedFactory := range configuredFactories {
-				informer := scopedFactory.factory
-				if _, err = informer.Integreatly().V1alpha1().GrafanaNotificationChannels().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-					AddFunc:    c.createGrafanaNotificationChannel,
-					UpdateFunc: c.updateGrafanaNotificationChannel,
-				}); err != nil {
-					return nil, fmt.Errorf("cannot add grafana notification channel handler: %w", err)
-				}
-			}
-		}
-
-		for _, configuredFactory := range configuredFactories {
-			c.v1alpha1InformerFactory = append(c.v1alpha1InformerFactory, scopedInformerFactory{
-				scope:   configuredFactory.scope,
-				factory: configuredFactory.factory,
-			})
-		}
-		c.setReadiness(fmt.Errorf("waiting for informer caches to synchronize: %s", strings.Join(c.informerScopes(), ", ")))
+	if !c.conversionEnabled() {
+		return c, nil
 	}
 
+	namespaces, namespaceErr := getWatchNamespaces()
+	if namespaceErr != nil {
+		return nil, fmt.Errorf("invalid watch namespace configuration: %w", namespaceErr)
+	}
+	configuredFactories := newV1alpha1InformerFactories(clients.V1alpha1, resyncPeriod, namespaces)
+	if err = c.configureEnabledConverters(configuredFactories, clients, resyncPeriod); err != nil {
+		return nil, err
+	}
+	c.registerV1alpha1InformerFactories(configuredFactories)
+	c.setReadiness(fmt.Errorf("waiting for informer caches to synchronize: %s", strings.Join(c.informerScopes(), ", ")))
+
 	return c, nil
+}
+
+func (c *ConverterController) conversionEnabled() bool {
+	return c.ConverterConf.Enable && c.ConverterConf.EnabledGrafanaConverter != (EnabledGrafanaConverter{})
+}
+
+func newV1alpha1InformerFactories(client v1alpha1clientset.Interface, resyncPeriod time.Duration, namespaces []string) []configuredInformerFactory {
+	configuredFactories := make([]configuredInformerFactory, 0, max(1, len(namespaces)))
+	if len(namespaces) == 0 {
+		return append(configuredFactories, configuredInformerFactory{
+			scope:   clusterWideScope,
+			factory: v1alpha1informers.NewSharedInformerFactory(client, resyncPeriod),
+		})
+	}
+	for _, namespace := range namespaces {
+		configuredFactories = append(configuredFactories, configuredInformerFactory{
+			scope:   namespace,
+			factory: v1alpha1informers.NewSharedInformerFactoryWithOptions(client, resyncPeriod, v1alpha1informers.WithNamespace(namespace)),
+		})
+	}
+	return configuredFactories
+}
+
+func (c *ConverterController) configureEnabledConverters(configuredFactories []configuredInformerFactory, clients ConverterClients, resyncPeriod time.Duration) error {
+	if c.ConverterConf.Dashboard {
+		if err := c.configureDashboardConverter(configuredFactories, clients, resyncPeriod); err != nil {
+			return err
+		}
+	}
+	if c.ConverterConf.Datasource {
+		if err := c.configureDatasourceConverter(configuredFactories); err != nil {
+			return err
+		}
+	}
+	if c.ConverterConf.Folder {
+		if err := c.configureFolderConverter(configuredFactories); err != nil {
+			return err
+		}
+	}
+	if c.ConverterConf.NotificationChannel {
+		if err := c.configureNotificationConverter(configuredFactories); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *ConverterController) configureDashboardConverter(configuredFactories []configuredInformerFactory, clients ConverterClients, resyncPeriod time.Duration) error {
+	c.dashboardQueue = newDashboardQueue()
+	for _, configuredFactory := range configuredFactories {
+		dashboardInformer, err := c.configureSourceDashboardInformer(configuredFactory.factory)
+		if err != nil {
+			return err
+		}
+		if err = c.configureConfigMapInformer(configuredFactory.scope, dashboardInformer.GetIndexer(), clients.Metadata, resyncPeriod); err != nil {
+			return err
+		}
+	}
+	return c.configureTargetDashboardInformers(configuredFactories, clients.V1beta1, resyncPeriod)
+}
+
+func (c *ConverterController) configureSourceDashboardInformer(factory v1alpha1informers.SharedInformerFactory) (cache.SharedIndexInformer, error) {
+	dashboardInformer := factory.Integreatly().V1alpha1().GrafanaDashboards().Informer()
+	if err := dashboardInformer.AddIndexers(cache.Indexers{
+		gzipConfigMapReferenceIndex: indexDashboardByGzipConfigMapReference,
+	}); err != nil {
+		return nil, fmt.Errorf("cannot index GrafanaDashboards by gzipConfigMapRef: %w", err)
+	}
+	if _, err := dashboardInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.enqueueSourceDashboard,
+		UpdateFunc: func(_, newObject any) { c.enqueueSourceDashboard(newObject) },
+	}); err != nil {
+		return nil, fmt.Errorf("cannot add grafana dashboards handler: %w", err)
+	}
+	return dashboardInformer, nil
+}
+
+func (c *ConverterController) configureConfigMapInformer(scope string, dashboardIndexer cache.Indexer, metadataClient metadata.Interface, resyncPeriod time.Duration) error {
+	configMapNamespace := metav1.NamespaceAll
+	if scope != clusterWideScope {
+		configMapNamespace = scope
+	}
+	configMapInformer := metadatainformer.NewFilteredMetadataInformer(
+		metadataClient,
+		configMapGroupVersionResource,
+		configMapNamespace,
+		resyncPeriod,
+		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
+		nil,
+	).Informer()
+	if _, err := configMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(object any) {
+			c.enqueueDashboardsForConfigMap(dashboardIndexer, object)
+		},
+		UpdateFunc: func(_, newObject any) {
+			c.enqueueDashboardsForConfigMap(dashboardIndexer, newObject)
+		},
+		DeleteFunc: func(object any) {
+			c.enqueueDashboardsForConfigMap(dashboardIndexer, object)
+		},
+	}); err != nil {
+		return fmt.Errorf("cannot add ConfigMap handler for gzipConfigMapRef: %w", err)
+	}
+	c.configMapInformerFactory = append(c.configMapInformerFactory, scopedInformerFactory{
+		scope: scope,
+		factory: &singleInformerFactory{
+			informer: configMapInformer,
+			typeName: reflect.TypeOf(&metav1.PartialObjectMetadata{}),
+		},
+	})
+	return nil
+}
+
+func (c *ConverterController) configureTargetDashboardInformers(configuredFactories []configuredInformerFactory, client v1beta1clientset.Interface, resyncPeriod time.Duration) error {
+	for _, configuredFactory := range configuredFactories {
+		factory := newV1beta1InformerFactory(client, resyncPeriod, configuredFactory.scope)
+		if _, err := factory.Observability().V1beta1().GrafanaDashboards().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    c.enqueueTargetDashboard,
+			UpdateFunc: c.enqueueUpdatedTargetDashboard,
+			DeleteFunc: c.enqueueDeletedTargetDashboard,
+		}); err != nil {
+			return fmt.Errorf("cannot add target grafana dashboards handler: %w", err)
+		}
+		c.v1beta1InformerFactory = append(c.v1beta1InformerFactory, scopedInformerFactory{
+			scope:   configuredFactory.scope,
+			factory: factory,
+		})
+	}
+	return nil
+}
+
+func newV1beta1InformerFactory(client v1beta1clientset.Interface, resyncPeriod time.Duration, scope string) v1beta1informers.SharedInformerFactory {
+	if scope == clusterWideScope {
+		return v1beta1informers.NewSharedInformerFactory(client, resyncPeriod)
+	}
+	return v1beta1informers.NewSharedInformerFactoryWithOptions(client, resyncPeriod, v1beta1informers.WithNamespace(scope))
+}
+
+func (c *ConverterController) configureDatasourceConverter(configuredFactories []configuredInformerFactory) error {
+	for _, configuredFactory := range configuredFactories {
+		if _, err := configuredFactory.factory.Integreatly().V1alpha1().GrafanaDataSources().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    c.createGrafanaDatasource,
+			UpdateFunc: c.updateGrafanaDatasource,
+		}); err != nil {
+			return fmt.Errorf("cannot add grafana datasource handler: %w", err)
+		}
+	}
+	return nil
+}
+
+func (c *ConverterController) configureFolderConverter(configuredFactories []configuredInformerFactory) error {
+	for _, configuredFactory := range configuredFactories {
+		if _, err := configuredFactory.factory.Integreatly().V1alpha1().GrafanaFolders().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    c.createGrafanaFolder,
+			UpdateFunc: c.updateGrafanaFolder,
+		}); err != nil {
+			return fmt.Errorf("cannot add grafana folder handler: %w", err)
+		}
+	}
+	return nil
+}
+
+func (c *ConverterController) configureNotificationConverter(configuredFactories []configuredInformerFactory) error {
+	for _, configuredFactory := range configuredFactories {
+		if _, err := configuredFactory.factory.Integreatly().V1alpha1().GrafanaNotificationChannels().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    c.createGrafanaNotificationChannel,
+			UpdateFunc: c.updateGrafanaNotificationChannel,
+		}); err != nil {
+			return fmt.Errorf("cannot add grafana notification channel handler: %w", err)
+		}
+	}
+	return nil
+}
+
+func (c *ConverterController) registerV1alpha1InformerFactories(configuredFactories []configuredInformerFactory) {
+	for _, configuredFactory := range configuredFactories {
+		c.v1alpha1InformerFactory = append(c.v1alpha1InformerFactory, scopedInformerFactory{
+			scope:   configuredFactory.scope,
+			factory: configuredFactory.factory,
+		})
+	}
 }
 
 // Start implements interface.

@@ -42,10 +42,12 @@ func TestNewGrafanaConverterControllerConfiguresInformerScopes(t *testing.T) {
 			controller, err := NewGrafanaConverterController(
 				context.Background(),
 				configPath,
-				v1alpha1fake.NewSimpleClientset(),
-				v1beta1fake.NewSimpleClientset(),
-				kubefake.NewSimpleClientset(),
-				metadatafake.NewSimpleMetadataClient(metadataScheme),
+				ConverterClients{
+					V1alpha1: v1alpha1fake.NewSimpleClientset(),
+					V1beta1:  v1beta1fake.NewSimpleClientset(),
+					Core:     kubefake.NewSimpleClientset(),
+					Metadata: metadatafake.NewSimpleMetadataClient(metadataScheme),
+				},
 				0,
 				logr.Discard(),
 			)
@@ -77,10 +79,12 @@ func TestConfigMapInformerCachesOnlyMetadata(t *testing.T) {
 	controller, err := NewGrafanaConverterController(
 		context.Background(),
 		configPath,
-		v1alpha1fake.NewSimpleClientset(),
-		v1beta1fake.NewSimpleClientset(),
-		kubefake.NewSimpleClientset(),
-		metadatafake.NewSimpleMetadataClient(metadataScheme, configMapMetadata),
+		ConverterClients{
+			V1alpha1: v1alpha1fake.NewSimpleClientset(),
+			V1beta1:  v1beta1fake.NewSimpleClientset(),
+			Core:     kubefake.NewSimpleClientset(),
+			Metadata: metadatafake.NewSimpleMetadataClient(metadataScheme, configMapMetadata),
+		},
 		0,
 		logr.Discard(),
 	)
