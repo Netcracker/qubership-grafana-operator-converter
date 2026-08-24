@@ -121,6 +121,7 @@ grafana:
     deleteTargetOnSourceDeletion: false
     dashboard: true
     # -- Maximum decompressed size of dashboard content read through gzipConfigMapRef.
+    # Must be a positive Kubernetes quantity.
     gzipConfigMapMaxDecompressedSize: 32Mi
     datasource: true
     folder: true
