@@ -22,6 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	kubefake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/util/workqueue"
@@ -318,11 +319,13 @@ func newDashboardTestController(
 		workqueue.NewTypedItemExponentialFailureRateLimiter[dashboardQueueItem](time.Millisecond, 5*time.Millisecond),
 	)
 	return &ConverterController{
-		log:               logr.Discard(),
-		v1alpha1clientset: alphaClient,
-		v1beta1clientset:  betaClient,
-		dashboardQueue:    queue,
-		apiTimeout:        time.Second,
+		log:                              logr.Discard(),
+		v1alpha1clientset:                alphaClient,
+		v1beta1clientset:                 betaClient,
+		coreClientset:                    kubefake.NewSimpleClientset(),
+		dashboardQueue:                   queue,
+		apiTimeout:                       time.Second,
+		gzipConfigMapMaxDecompressedSize: defaultGzipConfigMapMaxDecompressedSize,
 	}
 }
 

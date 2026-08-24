@@ -109,6 +109,7 @@ helm template converter "${chart_dir}" \
 	>"${render_dir}/config-namespace-override.yaml"
 
 grep -q '^  namespace: operators$' "${render_dir}/config-namespace-override.yaml"
+grep -q '^    gzipConfigMapMaxDecompressedSize: 32Mi$' "${render_dir}/config-namespace-override.yaml"
 
 if helm template converter "${chart_dir}" \
 	--namespace monitoring \

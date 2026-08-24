@@ -120,6 +120,8 @@ grafana:
     # -- Delete converted dashboards with their legacy sources by adding Kubernetes owner references
     deleteTargetOnSourceDeletion: false
     dashboard: true
+    # -- Maximum decompressed size of dashboard content read through gzipConfigMapRef.
+    gzipConfigMapMaxDecompressedSize: 32Mi
     datasource: true
     folder: true
     notification: true

@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"reflect"
@@ -16,28 +17,37 @@ import (
 	v1beta1clientset "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned"
 	v1beta1informers "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/informers/externalversions"
 	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/metadata"
+	"k8s.io/client-go/metadata/metadatainformer"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/yaml"
 )
 
 const (
-	defaultCacheSyncTimeout        = 2 * time.Minute
-	defaultDashboardAPITimeout     = 30 * time.Second
-	dashboardRetryInitialBackoff   = 5 * time.Millisecond
-	dashboardRetryMaximumBackoff   = time.Minute
-	dashboardReconciliationWorkers = 1
+	defaultCacheSyncTimeout                 = 2 * time.Minute
+	defaultDashboardAPITimeout              = 30 * time.Second
+	dashboardRetryInitialBackoff            = 5 * time.Millisecond
+	dashboardRetryMaximumBackoff            = time.Minute
+	dashboardReconciliationWorkers          = 1
+	defaultGzipConfigMapMaxDecompressedSize = 32 * 1024 * 1024
 )
+
+var configMapGroupVersionResource = schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
 
 // ConverterConfig defines converter configuration for Grafana v1alpha1 to v1beta1 api versions
 type ConverterConfig struct {
-	Enable                       bool                  `json:"enable,omitempty" yaml:"enable,omitempty"`
-	Strategy                     string                `json:"strategy,omitempty" yaml:"strategy,omitempty"`
-	InstanceSelector             *metav1.LabelSelector `json:"instanceSelector,omitempty" yaml:"instanceSelector,omitempty"`
-	DeleteTargetOnSourceDeletion bool                  `json:"deleteTargetOnSourceDeletion,omitempty" yaml:"deleteTargetOnSourceDeletion,omitempty"`
-	EnabledGrafanaConverter      `json:",inline" yaml:",inline"`
+	Enable                           bool                  `json:"enable,omitempty" yaml:"enable,omitempty"`
+	Strategy                         string                `json:"strategy,omitempty" yaml:"strategy,omitempty"`
+	InstanceSelector                 *metav1.LabelSelector `json:"instanceSelector,omitempty" yaml:"instanceSelector,omitempty"`
+	DeleteTargetOnSourceDeletion     bool                  `json:"deleteTargetOnSourceDeletion,omitempty" yaml:"deleteTargetOnSourceDeletion,omitempty"`
+	GzipConfigMapMaxDecompressedSize string                `json:"gzipConfigMapMaxDecompressedSize,omitempty" yaml:"gzipConfigMapMaxDecompressedSize,omitempty"`
+	EnabledGrafanaConverter          `json:",inline" yaml:",inline"`
 }
 type EnabledGrafanaConverter struct {
 	Dashboard           bool `json:"dashboard,omitempty" yaml:"dashboard,omitempty"`
@@ -66,30 +76,49 @@ type configuredV1beta1InformerFactory struct {
 	factory v1beta1informers.SharedInformerFactory
 }
 
+type singleInformerFactory struct {
+	informer cache.SharedIndexInformer
+	typeName reflect.Type
+}
+
+func (f *singleInformerFactory) Start(stopCh <-chan struct{}) {
+	go f.informer.Run(stopCh)
+}
+
+func (f *singleInformerFactory) WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool {
+	return map[reflect.Type]bool{
+		f.typeName: cache.WaitForCacheSync(stopCh, f.informer.HasSynced),
+	}
+}
+
 // ConverterController watches legacy Grafana resources and reconciles their v1beta1 replacements.
 type ConverterController struct {
-	ctx                     context.Context
-	log                     logr.Logger
-	ConverterConf           ConverterConfig
-	v1alpha1clientset       v1alpha1clientset.Interface
-	v1beta1clientset        v1beta1clientset.Interface
-	v1alpha1InformerFactory []scopedInformerFactory
-	v1beta1InformerFactory  []scopedInformerFactory
-	dashboardQueue          workqueue.TypedRateLimitingInterface[dashboardQueueItem]
-	readinessMu             sync.RWMutex
-	readinessErr            error
-	cacheSyncTimeout        time.Duration
-	apiTimeout              time.Duration
+	ctx                              context.Context
+	log                              logr.Logger
+	ConverterConf                    ConverterConfig
+	v1alpha1clientset                v1alpha1clientset.Interface
+	v1beta1clientset                 v1beta1clientset.Interface
+	coreClientset                    kubernetes.Interface
+	v1alpha1InformerFactory          []scopedInformerFactory
+	v1beta1InformerFactory           []scopedInformerFactory
+	configMapInformerFactory         []scopedInformerFactory
+	dashboardQueue                   workqueue.TypedRateLimitingInterface[dashboardQueueItem]
+	readinessMu                      sync.RWMutex
+	readinessErr                     error
+	cacheSyncTimeout                 time.Duration
+	apiTimeout                       time.Duration
+	gzipConfigMapMaxDecompressedSize int64
 }
 
 // NewGrafanaConverterController builder for grafana converter service
-func NewGrafanaConverterController(ctx context.Context, converterConfigPath string, v1alpha1clientset v1alpha1clientset.Interface, v1beta1clientset v1beta1clientset.Interface, resyncPeriod time.Duration, log logr.Logger) (*ConverterController, error) {
+func NewGrafanaConverterController(ctx context.Context, converterConfigPath string, v1alpha1clientset v1alpha1clientset.Interface, v1beta1clientset v1beta1clientset.Interface, coreClientset kubernetes.Interface, metadataClient metadata.Interface, resyncPeriod time.Duration, log logr.Logger) (*ConverterController, error) {
 	c := &ConverterController{
 		ctx:               ctx,
 		log:               log,
 		ConverterConf:     ConverterConfig{},
 		v1alpha1clientset: v1alpha1clientset,
 		v1beta1clientset:  v1beta1clientset,
+		coreClientset:     coreClientset,
 		cacheSyncTimeout:  defaultCacheSyncTimeout,
 		apiTimeout:        defaultDashboardAPITimeout,
 	}
@@ -99,9 +128,14 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 		log.Error(err, "can not read grafana converter configuration file, disabling grafana converter...")
 		return c, err
 	}
+	gzipConfigMapMaxDecompressedSize, err := parseGzipConfigMapMaxDecompressedSize(converterConfig.GzipConfigMapMaxDecompressedSize)
+	if err != nil {
+		return nil, err
+	}
 
 	log.Info(fmt.Sprintf("converter config: %+v\n", converterConfig))
 	c.ConverterConf = *converterConfig
+	c.gzipConfigMapMaxDecompressedSize = gzipConfigMapMaxDecompressedSize
 	if c.ConverterConf.Enable && c.ConverterConf.EnabledGrafanaConverter != (EnabledGrafanaConverter{}) {
 		namespaces, namespaceErr := getWatchNamespaces()
 		if namespaceErr != nil {
@@ -126,12 +160,51 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 			c.dashboardQueue = newDashboardQueue()
 			for _, scopedFactory := range configuredFactories {
 				informer := scopedFactory.factory
-				if _, err = informer.Integreatly().V1alpha1().GrafanaDashboards().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+				dashboardInformer := informer.Integreatly().V1alpha1().GrafanaDashboards().Informer()
+				if err = dashboardInformer.AddIndexers(cache.Indexers{
+					gzipConfigMapReferenceIndex: indexDashboardByGzipConfigMapReference,
+				}); err != nil {
+					return nil, fmt.Errorf("cannot index GrafanaDashboards by gzipConfigMapRef: %w", err)
+				}
+				if _, err = dashboardInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 					AddFunc:    c.enqueueSourceDashboard,
 					UpdateFunc: func(_, newObject any) { c.enqueueSourceDashboard(newObject) },
 				}); err != nil {
 					return nil, fmt.Errorf("cannot add grafana dashboards handler: %w", err)
 				}
+
+				configMapNamespace := metav1.NamespaceAll
+				if scopedFactory.scope != "cluster-wide" {
+					configMapNamespace = scopedFactory.scope
+				}
+				configMapInformer := metadatainformer.NewFilteredMetadataInformer(
+					metadataClient,
+					configMapGroupVersionResource,
+					configMapNamespace,
+					resyncPeriod,
+					cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
+					nil,
+				).Informer()
+				if _, err = configMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+					AddFunc: func(object any) {
+						c.enqueueDashboardsForConfigMap(dashboardInformer.GetIndexer(), object)
+					},
+					UpdateFunc: func(_, newObject any) {
+						c.enqueueDashboardsForConfigMap(dashboardInformer.GetIndexer(), newObject)
+					},
+					DeleteFunc: func(object any) {
+						c.enqueueDashboardsForConfigMap(dashboardInformer.GetIndexer(), object)
+					},
+				}); err != nil {
+					return nil, fmt.Errorf("cannot add ConfigMap handler for gzipConfigMapRef: %w", err)
+				}
+				c.configMapInformerFactory = append(c.configMapInformerFactory, scopedInformerFactory{
+					scope: scopedFactory.scope,
+					factory: &singleInformerFactory{
+						informer: configMapInformer,
+						typeName: reflect.TypeOf(&metav1.PartialObjectMetadata{}),
+					},
+				})
 			}
 
 			configuredV1beta1Factories := make([]configuredV1beta1InformerFactory, 0, len(configuredFactories))
@@ -284,9 +357,10 @@ func (c *ConverterController) informerScopes() []string {
 }
 
 func (c *ConverterController) informerFactories() []scopedInformerFactory {
-	factories := make([]scopedInformerFactory, 0, len(c.v1alpha1InformerFactory)+len(c.v1beta1InformerFactory))
+	factories := make([]scopedInformerFactory, 0, len(c.v1alpha1InformerFactory)+len(c.v1beta1InformerFactory)+len(c.configMapInformerFactory))
 	factories = append(factories, c.v1alpha1InformerFactory...)
 	factories = append(factories, c.v1beta1InformerFactory...)
+	factories = append(factories, c.configMapInformerFactory...)
 	return factories
 }
 
@@ -335,7 +409,28 @@ func ReadConfig(path string) (*ConverterConfig, error) {
 			return &ConverterConfig{}, fmt.Errorf("invalid instanceSelector: %w", selectorErr)
 		}
 	}
+	if _, sizeErr := parseGzipConfigMapMaxDecompressedSize(converterConfig.GzipConfigMapMaxDecompressedSize); sizeErr != nil {
+		return &ConverterConfig{}, sizeErr
+	}
 	return converterConfig, nil
+}
+
+func parseGzipConfigMapMaxDecompressedSize(configuredSize string) (int64, error) {
+	if configuredSize == "" {
+		return defaultGzipConfigMapMaxDecompressedSize, nil
+	}
+	quantity, err := resource.ParseQuantity(configuredSize)
+	if err != nil {
+		return 0, fmt.Errorf("invalid gzipConfigMapMaxDecompressedSize %q: %w", configuredSize, err)
+	}
+	size, exact := quantity.AsInt64()
+	if !exact || size <= 0 {
+		return 0, fmt.Errorf("gzipConfigMapMaxDecompressedSize must be a positive whole number of bytes, got %q", configuredSize)
+	}
+	if size == math.MaxInt64 {
+		return 0, fmt.Errorf("gzipConfigMapMaxDecompressedSize must be smaller than %d bytes", int64(math.MaxInt64))
+	}
+	return size, nil
 }
 
 // WatchNamespaceEnvVar is the constant for env variable WATCH_NAMESPACE

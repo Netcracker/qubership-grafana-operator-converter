@@ -17,7 +17,9 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
@@ -158,8 +160,18 @@ func RunManager(ctx context.Context) (err error) {
 		setupLog.Error(err, "Error building v1beta1 clientset")
 		return err
 	}
+	coreClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		setupLog.Error(err, "Error building Kubernetes core clientset")
+		return err
+	}
+	metadataClient, err := metadata.NewForConfig(cfg)
+	if err != nil {
+		setupLog.Error(err, "Error building Kubernetes metadata client")
+		return err
+	}
 
-	converter, err := converterController.NewGrafanaConverterController(ctx, *converterConfigPath, v1alpha1Client, v1beta1Client, *resyncPeriod, ctrl.Log.WithName("ConverterController"))
+	converter, err := converterController.NewGrafanaConverterController(ctx, *converterConfigPath, v1alpha1Client, v1beta1Client, coreClient, metadataClient, *resyncPeriod, ctrl.Log.WithName("ConverterController"))
 	if err != nil {
 		setupLog.Error(err, "cannot setup grafana CRD converter")
 		return err
