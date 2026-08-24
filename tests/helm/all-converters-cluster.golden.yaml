@@ -12,6 +12,14 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 rules:
   - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
       - integreatly.org
     resources:
       - grafanadashboards

@@ -22,6 +22,14 @@ metadata:
 rules:
   {{- if $.Values.grafana.converter.dashboard }}
   - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
       - integreatly.org
     resources:
       - grafanadashboards
