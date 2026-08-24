@@ -171,7 +171,18 @@ func RunManager(ctx context.Context) (err error) {
 		return err
 	}
 
-	converter, err := converterController.NewGrafanaConverterController(ctx, *converterConfigPath, v1alpha1Client, v1beta1Client, coreClient, metadataClient, *resyncPeriod, ctrl.Log.WithName("ConverterController"))
+	converter, err := converterController.NewGrafanaConverterController(
+		ctx,
+		*converterConfigPath,
+		converterController.ConverterClients{
+			V1alpha1: v1alpha1Client,
+			V1beta1:  v1beta1Client,
+			Core:     coreClient,
+			Metadata: metadataClient,
+		},
+		*resyncPeriod,
+		ctrl.Log.WithName("ConverterController"),
+	)
 	if err != nil {
 		setupLog.Error(err, "cannot setup grafana CRD converter")
 		return err
