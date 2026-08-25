@@ -14,7 +14,12 @@ so all existing Custom Resources can't be automatically update to new version.
 
 ## Deploy
 
-Just execute:
+Install the Grafana Operator `grafana.integreatly.org/v1beta1` CRDs from the
+[`qubership-monitoring-crds`](https://github.com/Netcracker/qubership-monitoring-operator/tree/main/charts/qubership-monitoring-crds)
+chart first. The converter chart installs only the legacy `integreatly.org/v1alpha1` CRDs that it reads as migration
+sources.
+
+Then install the converter:
 
 ```bash
 helm install grafana-operator-converter charts/qubership-grafana-operator-converter

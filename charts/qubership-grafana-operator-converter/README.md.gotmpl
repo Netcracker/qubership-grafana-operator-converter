@@ -5,6 +5,13 @@ for Kubernetes to convert Grafana Operator CRs from old unsupported version `v1a
 
 {{ template "chart.versionBadge" . }}{{ template "chart.typeBadge" . }}{{ template "chart.appVersionBadge" . }}
 
+## Prerequisites
+
+Install the Grafana Operator `grafana.integreatly.org/v1beta1` CRDs from the
+[`qubership-monitoring-crds`](https://github.com/Netcracker/qubership-monitoring-operator/tree/main/charts/qubership-monitoring-crds)
+chart before installing this chart. This chart contains only the legacy `integreatly.org/v1alpha1` CRDs that the
+converter reads as migration sources.
+
 ## Configuration
 
 <!-- markdownlint-disable line-length no-bare-urls table-column-style -->
