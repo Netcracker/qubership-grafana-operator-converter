@@ -18,7 +18,7 @@ func (c *ConverterController) convertGrafanaDashboard(src *v1alpha1.GrafanaDashb
 	c.log.Info(fmt.Sprintf("%s/%s conversion from %s to %s requested", src.Namespace, src.Name, v1alpha1.GroupVersion.String(), v1beta1.GroupVersion.String()))
 
 	dst = &v1beta1.GrafanaDashboard{
-		ObjectMeta: convertedGrafanaDashboardMeta(src),
+		ObjectMeta: convertedGrafanaDashboardMeta(src, c.ConverterConf.DeleteTargetOnSourceDeletion),
 	}
 
 	// Spec conversion

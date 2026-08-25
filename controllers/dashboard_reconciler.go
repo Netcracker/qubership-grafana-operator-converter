@@ -11,14 +11,12 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 )
 
 type dashboardQueueItem struct {
-	Namespace        string
-	Name             string
-	DeletedSourceUID types.UID
+	Namespace string
+	Name      string
 }
 
 type permanentDashboardError struct {
@@ -49,31 +47,6 @@ func (c *ConverterController) enqueueSourceDashboard(object any) {
 		return
 	}
 	c.dashboardQueue.Add(dashboardQueueItem{Namespace: dashboard.Namespace, Name: dashboard.Name})
-}
-
-func (c *ConverterController) enqueueDeletedSourceDashboard(object any) {
-	dashboard, ok := deletedSourceDashboard(object)
-	if !ok {
-		c.log.Error(fmt.Errorf("received %T", object), "Cannot enqueue deleted source GrafanaDashboard: unexpected object type")
-		return
-	}
-	c.dashboardQueue.Add(dashboardQueueItem{
-		Namespace:        dashboard.Namespace,
-		Name:             dashboard.Name,
-		DeletedSourceUID: dashboard.ObjectMeta.UID,
-	})
-}
-
-func deletedSourceDashboard(object any) (*v1alpha1.GrafanaDashboard, bool) {
-	if dashboard, ok := object.(*v1alpha1.GrafanaDashboard); ok {
-		return dashboard, true
-	}
-	tombstone, ok := object.(cache.DeletedFinalStateUnknown)
-	if !ok {
-		return nil, false
-	}
-	dashboard, ok := tombstone.Obj.(*v1alpha1.GrafanaDashboard)
-	return dashboard, ok
 }
 
 func (c *ConverterController) enqueueTargetDashboard(object any) {
@@ -169,9 +142,12 @@ func (c *ConverterController) reconcileDashboard(ctx context.Context, item dashb
 	source, err := c.v1alpha1clientset.IntegreatlyV1alpha1().GrafanaDashboards(item.Namespace).Get(ctx, item.Name, metav1.GetOptions{})
 	if err != nil {
 		if apierrs.IsNotFound(err) {
-			return c.reconcileDeletedDashboard(ctx, item)
+			return nil
 		}
 		return fmt.Errorf("get source GrafanaDashboard: %w", err)
+	}
+	if !source.DeletionTimestamp.IsZero() {
+		return nil
 	}
 
 	desired := c.convertGrafanaDashboard(source)
@@ -209,34 +185,6 @@ func (c *ConverterController) reconcileDashboard(ctx context.Context, item dashb
 		return classifyDashboardWriteError("update target GrafanaDashboard", updateErr)
 	}
 	c.log.Info("Updated target GrafanaDashboard", "name", updated.Name, "namespace", updated.Namespace, "uid", updated.UID)
-	return nil
-}
-
-func (c *ConverterController) reconcileDeletedDashboard(ctx context.Context, item dashboardQueueItem) error {
-	if item.DeletedSourceUID == "" {
-		return nil
-	}
-
-	targetClient := c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDashboards(item.Namespace)
-	target, err := targetClient.Get(ctx, item.Name, metav1.GetOptions{})
-	if err != nil {
-		if apierrs.IsNotFound(err) {
-			return nil
-		}
-		return fmt.Errorf("get target GrafanaDashboard for source deletion: %w", err)
-	}
-	if !isConverterManaged(target) || target.Annotations[grafanaDashboardSourceUIDAnnotation] != string(item.DeletedSourceUID) {
-		return nil
-	}
-
-	deleteOptions := metav1.DeleteOptions{Preconditions: &metav1.Preconditions{
-		UID:             &target.UID,
-		ResourceVersion: &target.ResourceVersion,
-	}}
-	if deleteErr := targetClient.Delete(ctx, target.Name, deleteOptions); deleteErr != nil && !apierrs.IsNotFound(deleteErr) {
-		return fmt.Errorf("delete target GrafanaDashboard: %w", deleteErr)
-	}
-	c.log.Info("Deleted target GrafanaDashboard after source deletion", "name", target.Name, "namespace", target.Namespace, "sourceUID", item.DeletedSourceUID)
 	return nil
 }
 

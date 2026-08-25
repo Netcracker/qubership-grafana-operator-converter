@@ -5,6 +5,12 @@ for Kubernetes to convert Grafana Operator CRs from old unsupported version `v1a
 
 {{ template "chart.versionBadge" . }}{{ template "chart.typeBadge" . }}{{ template "chart.appVersionBadge" . }}
 
+## Dashboard lifecycle
+
+Converted dashboards remain after their legacy sources are deleted by default. Set
+`grafana.converter.deleteTargetOnSourceDeletion=true` to add a Kubernetes owner reference to each converted dashboard.
+Kubernetes then deletes the converted dashboard with its source, even while the converter is not running.
+
 ## Configuration
 
 <!-- markdownlint-disable line-length no-bare-urls table-column-style -->

@@ -41,3 +41,8 @@ the resource unchanged. This prevents the converter from adopting resources mana
 
 No converter release predates this ownership marker. If you deployed an unreleased build that created unmarked copies,
 verify their ownership before adding the marker manually. Unmarked resources are otherwise treated as external.
+
+By default, deleting a legacy dashboard does not delete its converted dashboard. Set
+`grafana.converter.deleteTargetOnSourceDeletion=true` to add a Kubernetes owner reference to each converted dashboard.
+Kubernetes then deletes the converted dashboard when its legacy source is deleted, even while the converter is not
+running.

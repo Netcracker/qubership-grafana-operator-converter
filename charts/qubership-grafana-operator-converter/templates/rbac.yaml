@@ -35,7 +35,6 @@ rules:
       - grafanadashboards
     verbs:
       - create
-      - delete
       - get
       - list
       - update

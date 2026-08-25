@@ -5,6 +5,12 @@ for Kubernetes to convert Grafana Operator CRs from old unsupported version `v1a
 
 ![Version: 0.0.1](https://img.shields.io/badge/Version-0.0.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.1](https://img.shields.io/badge/AppVersion-0.0.1-informational?style=flat-square)
 
+## Dashboard lifecycle
+
+Converted dashboards remain after their legacy sources are deleted by default. Set
+`grafana.converter.deleteTargetOnSourceDeletion=true` to add a Kubernetes owner reference to each converted dashboard.
+Kubernetes then deletes the converted dashboard with its source, even while the converter is not running.
+
 ## Configuration
 
 <!-- markdownlint-disable line-length no-bare-urls table-column-style -->
@@ -14,6 +20,7 @@ for Kubernetes to convert Grafana Operator CRs from old unsupported version `v1a
 | affinity                         | object | `{}`                                                                                                                                                                 | pod affinity                                                                                                                                                                                                                                              |
 | env                              | list   | `[]`                                                                                                                                                                 | Additional environment variables. WATCH_NAMESPACE and WATCH_NAMESPACE_SELECTOR are reserved.                                                                                                                                                             |
 | fullnameOverride                 | string | `""`                                                                                                                                                                 | Overrides the fully qualified app name.                                                                                                                                                                                                                   |
+| grafana.converter.deleteTargetOnSourceDeletion | bool | `false` | Delete converted dashboards with their legacy sources by adding Kubernetes owner references |
 | image.pullPolicy                 | string | `"IfNotPresent"`                                                                                                                                                     | The image pull policy to use in grafana operator container                                                                                                                                                                                                |
 | image.repository                 | string | `"ghcr.io/grafana/grafana-operator"`                                                                                                                                 | grafana operator image repository                                                                                                                                                                                                                         |
 | image.tag                        | string | `""`                                                                                                                                                                 | Overrides the image tag whose default is the chart appVersion.                                                                                                                                                                                            |
