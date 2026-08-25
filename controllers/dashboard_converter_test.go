@@ -23,7 +23,6 @@ import (
 const (
 	converterManagedLabel = "app.kubernetes.io/managed-by-operator"
 	converterManagedValue = "grafana-operator-converter"
-	sourceUIDAnnotation   = "monitoring.netcracker.com/grafana-dashboard-source-uid"
 )
 
 func TestConvertGrafanaDashboardMarksManagedCopyWithoutMutatingSource(t *testing.T) {
@@ -59,7 +58,6 @@ func TestConvertGrafanaDashboardMarksManagedCopyWithoutMutatingSource(t *testing
 	}, converted.Labels)
 	assert.Equal(t, map[string]string{
 		"product.example.com/team": "observability",
-		sourceUIDAnnotation:        "source-uid",
 	}, converted.Annotations)
 	assert.Empty(t, converted.OwnerReferences)
 	assert.Equal(t, original, source)
@@ -78,9 +76,32 @@ func TestConvertGrafanaDashboardHandlesNilMetadata(t *testing.T) {
 	converted := controller.convertGrafanaDashboard(source)
 
 	assert.Equal(t, map[string]string{converterManagedLabel: converterManagedValue}, converted.Labels)
-	assert.Equal(t, map[string]string{
-		sourceUIDAnnotation: "source-uid",
-	}, converted.Annotations)
+	assert.Empty(t, converted.Annotations)
+}
+
+func TestConvertGrafanaDashboardAddsSourceOwnerReferenceWhenDeletionEnabled(t *testing.T) {
+	source := &v1alpha1.GrafanaDashboard{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sample-dashboard",
+			Namespace: "product-a",
+			UID:       types.UID("source-uid"),
+		},
+	}
+	controller := &ConverterController{
+		log: logr.Discard(),
+		ConverterConf: ConverterConfig{
+			DeleteTargetOnSourceDeletion: true,
+		},
+	}
+
+	converted := controller.convertGrafanaDashboard(source)
+
+	assert.Equal(t, []metav1.OwnerReference{{
+		APIVersion: v1alpha1.GroupVersion.String(),
+		Kind:       v1alpha1.GrafanaDashboardKind,
+		Name:       source.Name,
+		UID:        source.ObjectMeta.UID,
+	}}, converted.OwnerReferences)
 }
 
 func TestUpdateGrafanaDashboardReconcilesMetadata(t *testing.T) {
@@ -93,9 +114,14 @@ func TestUpdateGrafanaDashboardReconcilesMetadata(t *testing.T) {
 				"obsolete":            "remove-me",
 			},
 			Annotations: map[string]string{
-				"obsolete":          "remove-me",
-				sourceUIDAnnotation: "source-uid",
+				"obsolete": "remove-me",
 			},
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: v1alpha1.GroupVersion.String(),
+				Kind:       v1alpha1.GrafanaDashboardKind,
+				Name:       "sample-dashboard",
+				UID:        types.UID("source-uid"),
+			}},
 		},
 		Spec: v1beta1.GrafanaDashboardSpec{Json: "unchanged"},
 	}
@@ -135,8 +161,8 @@ func TestUpdateGrafanaDashboardReconcilesMetadata(t *testing.T) {
 	}, actual.Labels)
 	assert.Equal(t, map[string]string{
 		"product.example.com/team": "observability",
-		sourceUIDAnnotation:        "source-uid",
 	}, actual.Annotations)
+	assert.Empty(t, actual.OwnerReferences)
 }
 
 func TestUpdateGrafanaDashboardRefreshesSourceIdentityAfterRecreation(t *testing.T) {
@@ -145,9 +171,12 @@ func TestUpdateGrafanaDashboardRefreshesSourceIdentityAfterRecreation(t *testing
 			Name:      "sample-dashboard",
 			Namespace: "product-a",
 			Labels:    map[string]string{converterManagedLabel: converterManagedValue},
-			Annotations: map[string]string{
-				sourceUIDAnnotation: "old-source-uid",
-			},
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: v1alpha1.GroupVersion.String(),
+				Kind:       v1alpha1.GrafanaDashboardKind,
+				Name:       "sample-dashboard",
+				UID:        types.UID("old-source-uid"),
+			}},
 		},
 		Spec: v1beta1.GrafanaDashboardSpec{Json: "unchanged"},
 	}
@@ -167,6 +196,9 @@ func TestUpdateGrafanaDashboardRefreshesSourceIdentityAfterRecreation(t *testing
 		log:               logr.Discard(),
 		v1alpha1clientset: alphaClient,
 		v1beta1clientset:  betaClient,
+		ConverterConf: ConverterConfig{
+			DeleteTargetOnSourceDeletion: true,
+		},
 	}
 
 	require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{
@@ -178,7 +210,13 @@ func TestUpdateGrafanaDashboardRefreshesSourceIdentityAfterRecreation(t *testing
 		context.Background(), existing.Name, metav1.GetOptions{},
 	)
 	require.NoError(t, err)
-	assert.Equal(t, "new-source-uid", actual.Annotations[sourceUIDAnnotation])
+	assert.Empty(t, actual.Annotations)
+	assert.Equal(t, []metav1.OwnerReference{{
+		APIVersion: v1alpha1.GroupVersion.String(),
+		Kind:       v1alpha1.GrafanaDashboardKind,
+		Name:       newSource.Name,
+		UID:        newSource.ObjectMeta.UID,
+	}}, actual.OwnerReferences)
 }
 
 func TestConvertGrafanaDatasourceMarksManagedCopyWithoutMutatingSource(t *testing.T) {

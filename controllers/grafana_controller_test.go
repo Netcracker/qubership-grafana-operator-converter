@@ -149,13 +149,14 @@ func TestReadConfigRejectsMalformedYAML(t *testing.T) {
 }
 
 func TestReadConfigAcceptsValidConfig(t *testing.T) {
-	path := writeConverterConfig(t, "enable: true\ndashboard: true\n")
+	path := writeConverterConfig(t, "enable: true\ndashboard: true\ndeleteTargetOnSourceDeletion: true\n")
 
 	config, err := ReadConfig(path)
 
 	require.NoError(t, err)
 	assert.True(t, config.Enable)
 	assert.True(t, config.Dashboard)
+	assert.True(t, config.DeleteTargetOnSourceDeletion)
 }
 
 func TestReadConfigKeepsMissingFileAsDisabledMode(t *testing.T) {

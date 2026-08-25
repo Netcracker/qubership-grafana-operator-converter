@@ -33,10 +33,11 @@ const (
 
 // ConverterConfig defines converter configuration for Grafana v1alpha1 to v1beta1 api versions
 type ConverterConfig struct {
-	Enable                  bool                  `json:"enable,omitempty" yaml:"enable,omitempty"`
-	Strategy                string                `json:"strategy,omitempty" yaml:"strategy,omitempty"`
-	InstanceSelector        *metav1.LabelSelector `json:"instanceSelector,omitempty" yaml:"instanceSelector,omitempty"`
-	EnabledGrafanaConverter `json:",inline" yaml:",inline"`
+	Enable                       bool                  `json:"enable,omitempty" yaml:"enable,omitempty"`
+	Strategy                     string                `json:"strategy,omitempty" yaml:"strategy,omitempty"`
+	InstanceSelector             *metav1.LabelSelector `json:"instanceSelector,omitempty" yaml:"instanceSelector,omitempty"`
+	DeleteTargetOnSourceDeletion bool                  `json:"deleteTargetOnSourceDeletion,omitempty" yaml:"deleteTargetOnSourceDeletion,omitempty"`
+	EnabledGrafanaConverter      `json:",inline" yaml:",inline"`
 }
 type EnabledGrafanaConverter struct {
 	Dashboard           bool `json:"dashboard,omitempty" yaml:"dashboard,omitempty"`
@@ -128,7 +129,6 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 				if _, err = informer.Integreatly().V1alpha1().GrafanaDashboards().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 					AddFunc:    c.enqueueSourceDashboard,
 					UpdateFunc: func(_, newObject any) { c.enqueueSourceDashboard(newObject) },
-					DeleteFunc: c.enqueueDeletedSourceDashboard,
 				}); err != nil {
 					return nil, fmt.Errorf("cannot add grafana dashboards handler: %w", err)
 				}

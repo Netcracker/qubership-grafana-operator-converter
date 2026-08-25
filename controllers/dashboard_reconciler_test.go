@@ -24,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 )
 
@@ -55,7 +54,7 @@ func TestDashboardWorkerRetriesTransientCreateError(t *testing.T) {
 
 func TestDashboardWorkerRetriesTransientUpdateError(t *testing.T) {
 	source := testSourceDashboard("sample", "source-uid", "desired")
-	target := testTargetDashboard("sample", "source-uid", "drifted")
+	target := testTargetDashboard("sample", "drifted")
 	alphaClient := v1alpha1fake.NewSimpleClientset(source)
 	betaClient := v1beta1fake.NewSimpleClientset(target)
 	var updateAttempts atomic.Int32
@@ -81,7 +80,7 @@ func TestDashboardWorkerRetriesTransientUpdateError(t *testing.T) {
 
 func TestDeletedManagedTargetIsRecreatedWithoutSourceEvent(t *testing.T) {
 	source := testSourceDashboard("sample", "source-uid", "desired")
-	target := testTargetDashboard("sample", "source-uid", "desired")
+	target := testTargetDashboard("sample", "desired")
 	alphaClient := v1alpha1fake.NewSimpleClientset(source)
 	betaClient := v1beta1fake.NewSimpleClientset(target)
 	controller := newDashboardTestController(alphaClient, betaClient)
@@ -102,7 +101,7 @@ func TestDeletedManagedTargetIsRecreatedWithoutSourceEvent(t *testing.T) {
 
 func TestModifiedManagedTargetIsRepairedWithoutSourceEvent(t *testing.T) {
 	source := testSourceDashboard("sample", "source-uid", "desired")
-	target := testTargetDashboard("sample", "source-uid", "desired")
+	target := testTargetDashboard("sample", "desired")
 	alphaClient := v1alpha1fake.NewSimpleClientset(source)
 	betaClient := v1beta1fake.NewSimpleClientset(target)
 	controller := newDashboardTestController(alphaClient, betaClient)
@@ -124,78 +123,41 @@ func TestModifiedManagedTargetIsRepairedWithoutSourceEvent(t *testing.T) {
 	}, time.Second, 5*time.Millisecond)
 }
 
-func TestSourceDeletionOnlyDeletesMatchingManagedTarget(t *testing.T) {
-	tests := []struct {
-		name          string
-		target        *v1beta1.GrafanaDashboard
-		deletedUID    types.UID
-		expectDeleted bool
-	}{
-		{
-			name:          "matching managed target",
-			target:        testTargetDashboard("sample", "source-uid", "desired"),
-			deletedUID:    types.UID("source-uid"),
-			expectDeleted: true,
-		},
-		{
-			name:       "different source UID",
-			target:     testTargetDashboard("sample", "new-source-uid", "desired"),
-			deletedUID: types.UID("old-source-uid"),
-		},
-		{
-			name: "unmanaged target",
-			target: &v1beta1.GrafanaDashboard{
-				ObjectMeta: metav1.ObjectMeta{Name: "sample", Namespace: "product-a"},
-				Spec:       v1beta1.GrafanaDashboardSpec{Json: "foreign"},
-			},
-			deletedUID: types.UID("source-uid"),
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			alphaClient := v1alpha1fake.NewSimpleClientset()
-			betaClient := v1beta1fake.NewSimpleClientset(test.target)
-			controller := newDashboardTestController(alphaClient, betaClient)
-
-			err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{
-				Namespace:        test.target.Namespace,
-				Name:             test.target.Name,
-				DeletedSourceUID: test.deletedUID,
-			})
-
-			require.NoError(t, err)
-			_, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(test.target.Namespace).Get(
-				context.Background(), test.target.Name, metav1.GetOptions{},
-			)
-			if test.expectDeleted {
-				assert.True(t, apierrs.IsNotFound(getErr))
-			} else {
-				require.NoError(t, getErr)
-			}
-		})
-	}
-}
-
-func TestStaleSourceDeletionDoesNotDeleteRecreatedSourceTarget(t *testing.T) {
-	source := testSourceDashboard("sample", "new-source-uid", "desired")
-	target := testTargetDashboard("sample", "new-source-uid", "desired")
-	alphaClient := v1alpha1fake.NewSimpleClientset(source)
+func TestMissingSourceLeavesManagedTargetUnchanged(t *testing.T) {
+	target := testTargetDashboard("sample", "desired")
+	alphaClient := v1alpha1fake.NewSimpleClientset()
 	betaClient := v1beta1fake.NewSimpleClientset(target)
 	controller := newDashboardTestController(alphaClient, betaClient)
 
-	err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{
-		Namespace:        source.Namespace,
-		Name:             source.Name,
-		DeletedSourceUID: types.UID("old-source-uid"),
-	})
+	require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+		Namespace: target.Namespace,
+		Name:      target.Name,
+	}))
 
-	require.NoError(t, err)
 	actual, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(target.Namespace).Get(
 		context.Background(), target.Name, metav1.GetOptions{},
 	)
 	require.NoError(t, err)
-	assert.Equal(t, "new-source-uid", actual.Annotations[grafanaDashboardSourceUIDAnnotation])
+	assert.Equal(t, target, actual)
+}
+
+func TestDeletingSourceDoesNotRecreateDeletedTarget(t *testing.T) {
+	source := testSourceDashboard("sample", "source-uid", "desired")
+	now := metav1.Now()
+	source.DeletionTimestamp = &now
+	alphaClient := v1alpha1fake.NewSimpleClientset(source)
+	betaClient := v1beta1fake.NewSimpleClientset()
+	controller := newDashboardTestController(alphaClient, betaClient)
+
+	require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+		Namespace: source.Namespace,
+		Name:      source.Name,
+	}))
+
+	_, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+		context.Background(), source.Name, metav1.GetOptions{},
+	)
+	assert.True(t, apierrs.IsNotFound(err))
 }
 
 func TestPermanentSourceErrorWaitsForSourceChangeAndDoesNotBlockAnotherDashboard(t *testing.T) {
@@ -348,18 +310,6 @@ func TestConverterShutdownCancelsDashboardWorker(t *testing.T) {
 	}
 }
 
-func TestDeletedSourceDashboardHandlesTombstone(t *testing.T) {
-	source := testSourceDashboard("sample", "source-uid", "desired")
-	controller := newDashboardTestController(v1alpha1fake.NewSimpleClientset(), v1beta1fake.NewSimpleClientset())
-
-	controller.enqueueDeletedSourceDashboard(cache.DeletedFinalStateUnknown{Key: "product-a/sample", Obj: source})
-	item, shutdown := controller.dashboardQueue.Get()
-	defer controller.dashboardQueue.Done(item)
-
-	assert.False(t, shutdown)
-	assert.Equal(t, source.ObjectMeta.UID, item.DeletedSourceUID)
-}
-
 func newDashboardTestController(
 	alphaClient *v1alpha1fake.Clientset,
 	betaClient *v1beta1fake.Clientset,
@@ -402,16 +352,13 @@ func testSourceDashboard(name string, uid types.UID, json string) *v1alpha1.Graf
 	}
 }
 
-func testTargetDashboard(name string, sourceUID types.UID, json string) *v1beta1.GrafanaDashboard {
+func testTargetDashboard(name, json string) *v1beta1.GrafanaDashboard {
 	return &v1beta1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: "product-a",
 			UID:       types.UID(fmt.Sprintf("target-%s", name)),
 			Labels:    map[string]string{managedByOperatorLabelKey: managedByOperatorLabelValue},
-			Annotations: map[string]string{
-				grafanaDashboardSourceUIDAnnotation: string(sourceUID),
-			},
 		},
 		Spec: v1beta1.GrafanaDashboardSpec{
 			Json:                      json,
