@@ -118,14 +118,11 @@ run: generate fmt vet
 .PHONY: generate
 generate: controller-gen generate-crds append-helm-hooks-crds
 
-# Generate CRDs
+# Generate legacy source CRDs packaged with the converter chart
 .PHONY: generate-crds
 generate-crds:
 	$(CONTROLLER_GEN) crd:crdVersions={v1} \
 					  paths="./api/operator/v1alpha1" \
-					  output:artifacts:config=charts/qubership-grafana-operator-converter/crds/
-	$(CONTROLLER_GEN) crd:crdVersions={v1} \
-					  paths="./api/operator/v1beta1" \
 					  output:artifacts:config=charts/qubership-grafana-operator-converter/crds/
 
 # Append Helm hooks to CRDs

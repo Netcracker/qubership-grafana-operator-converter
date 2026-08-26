@@ -8,6 +8,22 @@ expected_dir="${repository_root}/tests/helm"
 render_dir=$(mktemp -d)
 trap 'rm -rf "${render_dir}"' EXIT
 
+target_crd=$(find "${chart_dir}/crds" -maxdepth 1 -type f -name 'grafana.integreatly.org_*.yaml' -print -quit)
+if [[ -n "${target_crd}" ]]; then
+	echo "converter chart must not contain Grafana Operator v1beta1 CRDs: ${target_crd}" >&2
+	exit 1
+fi
+
+legacy_crd_count=$(find "${chart_dir}/crds" -maxdepth 1 -type f -name 'integreatly.org_*.yaml' | wc -l)
+[[ ${legacy_crd_count} -eq 5 ]]
+
+helm show crds "${chart_dir}" >"${render_dir}/crds.yaml"
+if grep -q '^  group: grafana\.integreatly\.org$' "${render_dir}/crds.yaml"; then
+	echo "converter chart package must not render Grafana Operator v1beta1 CRDs" >&2
+	exit 1
+fi
+[[ $(grep -c '^  group: integreatly\.org$' "${render_dir}/crds.yaml") -eq 5 ]]
+
 helm template converter "${chart_dir}" \
 	--namespace monitoring \
 	--show-only templates/rbac.yaml \
