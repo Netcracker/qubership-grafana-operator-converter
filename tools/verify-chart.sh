@@ -58,6 +58,22 @@ grep -q '^              value: "product-a,product-b"$' \
 
 helm template converter "${chart_dir}" \
 	--namespace monitoring \
+	--show-only templates/deployment.yaml \
+	--set grafana.converter.deleteTargetOnSourceDeletion=false \
+	>"${render_dir}/deployment-preserve-targets.yaml"
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/deployment.yaml \
+	--set grafana.converter.deleteTargetOnSourceDeletion=true \
+	>"${render_dir}/deployment-delete-targets.yaml"
+
+preserve_checksum=$(grep 'checksum/grafana-converter-config:' "${render_dir}/deployment-preserve-targets.yaml")
+delete_checksum=$(grep 'checksum/grafana-converter-config:' "${render_dir}/deployment-delete-targets.yaml")
+[[ "${preserve_checksum}" != "${delete_checksum}" ]]
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
 	--show-only templates/rbac.yaml \
 	--set leaderElect=true \
 	--set grafana.converter.datasource=false \

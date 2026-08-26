@@ -28,7 +28,7 @@ ARG BUSYBOX_VERSION=1.37.0-r31
 # renovate: datasource=repology depName=alpine_3_24/libretls versioning=apk syncWith=alpine
 ARG LIBRETLS_VERSION=3.8.1-r0
 # renovate: datasource=repology depName=alpine_3_24/openssl versioning=apk syncWith=alpine
-ARG OPENSSL_VERSION=3.5.7-r0
+ARG OPENSSL_VERSION=3.5.8-r0
 # renovate: datasource=repology depName=alpine_3_24/zlib versioning=apk syncWith=alpine
 ARG ZLIB_VERSION=1.3.2-r0
 
