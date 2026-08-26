@@ -11,6 +11,15 @@ Converted dashboards remain after their legacy sources are deleted by default. S
 `grafana.converter.deleteTargetOnSourceDeletion=true` to add a Kubernetes owner reference to each converted dashboard.
 Kubernetes then deletes the converted dashboard with its source, even while the converter is not running.
 
+## gzip ConfigMap dashboard content
+
+The dashboard converter resolves legacy `spec.gzipConfigMapRef` values from `ConfigMap.binaryData` into target
+`spec.gzipJson` values. It watches ConfigMap metadata so content updates trigger reconciliation without caching every
+ConfigMap payload.
+
+`grafana.converter.gzipConfigMapMaxDecompressedSize` limits the decompressed JSON size. The default is `32Mi`. Set a
+positive Kubernetes quantity when a different limit is required.
+
 ## Configuration
 
 <!-- markdownlint-disable line-length no-bare-urls table-column-style -->

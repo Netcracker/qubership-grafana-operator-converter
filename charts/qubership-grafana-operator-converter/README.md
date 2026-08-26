@@ -11,6 +11,15 @@ Converted dashboards remain after their legacy sources are deleted by default. S
 `grafana.converter.deleteTargetOnSourceDeletion=true` to add a Kubernetes owner reference to each converted dashboard.
 Kubernetes then deletes the converted dashboard with its source, even while the converter is not running.
 
+## gzip ConfigMap dashboard content
+
+The dashboard converter resolves legacy `spec.gzipConfigMapRef` values from `ConfigMap.binaryData` into target
+`spec.gzipJson` values. It watches ConfigMap metadata so content updates trigger reconciliation without caching every
+ConfigMap payload.
+
+`grafana.converter.gzipConfigMapMaxDecompressedSize` limits the decompressed JSON size. The default is `32Mi`. Set a
+positive Kubernetes quantity when a different limit is required.
+
 ## Configuration
 
 <!-- markdownlint-disable line-length no-bare-urls table-column-style -->
@@ -21,6 +30,7 @@ Kubernetes then deletes the converted dashboard with its source, even while the 
 | env                              | list   | `[]`                                                                                                                                                                 | Additional environment variables. WATCH_NAMESPACE and WATCH_NAMESPACE_SELECTOR are reserved.                                                                                                                                                             |
 | fullnameOverride                 | string | `""`                                                                                                                                                                 | Overrides the fully qualified app name.                                                                                                                                                                                                                   |
 | grafana.converter.deleteTargetOnSourceDeletion | bool | `false` | Delete converted dashboards with their legacy sources by adding Kubernetes owner references |
+| grafana.converter.gzipConfigMapMaxDecompressedSize | string | `"32Mi"` | Maximum decompressed size of dashboard content read through gzipConfigMapRef. |
 | image.pullPolicy                 | string | `"IfNotPresent"`                                                                                                                                                     | The image pull policy to use in grafana operator container                                                                                                                                                                                                |
 | image.repository                 | string | `"ghcr.io/grafana/grafana-operator"`                                                                                                                                 | grafana operator image repository                                                                                                                                                                                                                         |
 | image.tag                        | string | `""`                                                                                                                                                                 | Overrides the image tag whose default is the chart appVersion.                                                                                                                                                                                            |
