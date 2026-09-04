@@ -28,7 +28,7 @@ image:
   # -- The image pull policy to use in grafana operator container
   pullPolicy: IfNotPresent
   # -- Overrides the image tag whose default is the chart appVersion.
-  tag: "main@sha256:02f2f3cb32a5db2aaaebdfb9d29a4a7d972c8c2e3a3064697279b1cf52e33eec"
+  tag: "main@sha256:b691341379efd8d663124ad648b70972be6650843c3fda3daefa9ddd7fc78238"
 
 # -- image pull secrets
 imagePullSecrets: []
