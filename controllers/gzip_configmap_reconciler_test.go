@@ -29,7 +29,7 @@ func TestReconcileDashboardResolvesGzipConfigMapReference(t *testing.T) {
 	configMap := testGzipConfigMap("dashboard-content", "dashboard.json.gz", compressed)
 	alphaClient := v1alpha1fake.NewSimpleClientset(source)
 	betaClient := v1beta1fake.NewSimpleClientset()
-	controller := newDashboardTestController(alphaClient, betaClient)
+	controller := newGzipConfigMapTestController(alphaClient, betaClient)
 	controller.coreClientset = kubefake.NewSimpleClientset(configMap)
 
 	err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{Namespace: source.Namespace, Name: source.Name})
@@ -74,7 +74,7 @@ func TestGzipConfigMapReferenceErrorsWaitForConfigMapEvent(t *testing.T) {
 			source := testGzipConfigMapSource("sample", "source-uid", "dashboard-content", "dashboard.json.gz")
 			alphaClient := v1alpha1fake.NewSimpleClientset(source)
 			betaClient := v1beta1fake.NewSimpleClientset()
-			controller := newDashboardTestController(alphaClient, betaClient)
+			controller := newGzipConfigMapTestController(alphaClient, betaClient)
 			controller.coreClientset = kubefake.NewSimpleClientset(test.configMaps...)
 
 			err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{Namespace: source.Namespace, Name: source.Name})
@@ -92,7 +92,7 @@ func TestGzipConfigMapReferenceErrorsWaitForConfigMapEvent(t *testing.T) {
 
 func TestGzipConfigMapAPIFailureIsRetryable(t *testing.T) {
 	source := testGzipConfigMapSource("sample", "source-uid", "dashboard-content", "dashboard.json.gz")
-	controller := newDashboardTestController(v1alpha1fake.NewSimpleClientset(source), v1beta1fake.NewSimpleClientset())
+	controller := newGzipConfigMapTestController(v1alpha1fake.NewSimpleClientset(source), v1beta1fake.NewSimpleClientset())
 	coreClient := kubefake.NewSimpleClientset()
 	coreClient.PrependReactor("get", "configmaps", func(k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, errors.New("temporary ConfigMap API failure")
@@ -119,7 +119,7 @@ func TestGzipConfigMapReferenceRejectsInvalidConfigMapNameWithoutRetry(t *testin
 		t.Run(test.name, func(t *testing.T) {
 			source := testGzipConfigMapSource("sample", "source-uid", test.configMapName, "dashboard.json.gz")
 			coreClient := kubefake.NewSimpleClientset()
-			controller := newDashboardTestController(v1alpha1fake.NewSimpleClientset(source), v1beta1fake.NewSimpleClientset())
+			controller := newGzipConfigMapTestController(v1alpha1fake.NewSimpleClientset(source), v1beta1fake.NewSimpleClientset())
 			controller.coreClientset = coreClient
 
 			err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{Namespace: source.Namespace, Name: source.Name})
@@ -139,7 +139,7 @@ func TestGzipConfigMapReferenceRejectsInlineGzipJsonBeforeConfigMapGet(t *testin
 	coreClient := kubefake.NewSimpleClientset(
 		testGzipConfigMap("dashboard-content", "dashboard.json.gz", gzipDashboardJSON(t, `{"title":"from-config-map"}`)),
 	)
-	controller := newDashboardTestController(v1alpha1fake.NewSimpleClientset(source), v1beta1fake.NewSimpleClientset())
+	controller := newGzipConfigMapTestController(v1alpha1fake.NewSimpleClientset(source), v1beta1fake.NewSimpleClientset())
 	controller.coreClientset = coreClient
 
 	err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{Namespace: source.Namespace, Name: source.Name})
@@ -154,7 +154,7 @@ func TestGzipConfigMapReferenceRejectsOversizedDashboard(t *testing.T) {
 	dashboardJSON := `{"title":"larger than the configured limit"}`
 	compressed := gzipDashboardJSON(t, dashboardJSON)
 	source := testGzipConfigMapSource("sample", "source-uid", "dashboard-content", "dashboard.json.gz")
-	controller := newDashboardTestController(v1alpha1fake.NewSimpleClientset(source), v1beta1fake.NewSimpleClientset())
+	controller := newGzipConfigMapTestController(v1alpha1fake.NewSimpleClientset(source), v1beta1fake.NewSimpleClientset())
 	controller.coreClientset = kubefake.NewSimpleClientset(
 		testGzipConfigMap("dashboard-content", "dashboard.json.gz", compressed),
 	)
@@ -172,7 +172,7 @@ func TestGzipConfigMapReferenceUsesConvertedDashboardSourceValidation(t *testing
 	compressed := gzipDashboardJSON(t, `{"title":"from-config-map"}`)
 	source := testGzipConfigMapSource("sample", "source-uid", "dashboard-content", "dashboard.json.gz")
 	source.Spec.Json = `{"title":"inline"}`
-	controller := newDashboardTestController(v1alpha1fake.NewSimpleClientset(source), v1beta1fake.NewSimpleClientset())
+	controller := newGzipConfigMapTestController(v1alpha1fake.NewSimpleClientset(source), v1beta1fake.NewSimpleClientset())
 	controller.coreClientset = kubefake.NewSimpleClientset(
 		testGzipConfigMap("dashboard-content", "dashboard.json.gz", compressed),
 	)
@@ -182,6 +182,27 @@ func TestGzipConfigMapReferenceUsesConvertedDashboardSourceValidation(t *testing
 	require.Error(t, err)
 	assert.True(t, isPermanentDashboardError(err))
 	assert.Contains(t, err.Error(), "exactly one dashboard content source is required, found 2")
+}
+
+func TestGzipConfigMapReferenceIsRejectedWhileResolutionIsDisabled(t *testing.T) {
+	source := testGzipConfigMapSource("sample", "source-uid", "dashboard-content", "dashboard.json.gz")
+	betaClient := v1beta1fake.NewSimpleClientset()
+	coreClient := kubefake.NewSimpleClientset(
+		testGzipConfigMap("dashboard-content", "dashboard.json.gz", gzipDashboardJSON(t, `{"title":"from-config-map"}`)),
+	)
+	controller := newDashboardTestController(v1alpha1fake.NewSimpleClientset(source), betaClient)
+	controller.coreClientset = coreClient
+
+	err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{Namespace: source.Namespace, Name: source.Name})
+
+	require.Error(t, err)
+	assert.True(t, isPermanentDashboardError(err))
+	assert.Contains(t, err.Error(), "grafana.converter.resolveGzipConfigMapRef")
+	assert.Empty(t, coreClient.Actions())
+	_, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+		context.Background(), source.Name, metav1.GetOptions{},
+	)
+	assert.True(t, apierrs.IsNotFound(getErr))
 }
 
 func TestConfigMapEventEnqueuesOnlyReferencingDashboards(t *testing.T) {
@@ -194,7 +215,7 @@ func TestConfigMapEventEnqueuesOnlyReferencingDashboards(t *testing.T) {
 	require.NoError(t, indexer.Add(first))
 	require.NoError(t, indexer.Add(second))
 	require.NoError(t, indexer.Add(unrelated))
-	controller := newDashboardTestController(v1alpha1fake.NewSimpleClientset(), v1beta1fake.NewSimpleClientset())
+	controller := newGzipConfigMapTestController(v1alpha1fake.NewSimpleClientset(), v1beta1fake.NewSimpleClientset())
 	configMap := testGzipConfigMap("shared-content", "first.json.gz", []byte("content"))
 
 	controller.enqueueDashboardsForConfigMap(indexer, cache.DeletedFinalStateUnknown{Obj: configMap})
@@ -217,7 +238,7 @@ func TestConfigMapMetadataEventEnqueuesReferencingDashboard(t *testing.T) {
 	})
 	source := testGzipConfigMapSource("sample", "source-uid", "dashboard-content", "dashboard.json.gz")
 	require.NoError(t, indexer.Add(source))
-	controller := newDashboardTestController(v1alpha1fake.NewSimpleClientset(), v1beta1fake.NewSimpleClientset())
+	controller := newGzipConfigMapTestController(v1alpha1fake.NewSimpleClientset(), v1beta1fake.NewSimpleClientset())
 	configMapMetadata := &metav1.PartialObjectMetadata{
 		ObjectMeta: metav1.ObjectMeta{Name: "dashboard-content", Namespace: "product-a"},
 	}
@@ -239,7 +260,7 @@ func TestConfigMapEventReconcilesUpdatesWithoutSourceEvent(t *testing.T) {
 	alphaClient := v1alpha1fake.NewSimpleClientset(source)
 	betaClient := v1beta1fake.NewSimpleClientset()
 	coreClient := kubefake.NewSimpleClientset(configMap)
-	controller := newDashboardTestController(alphaClient, betaClient)
+	controller := newGzipConfigMapTestController(alphaClient, betaClient)
 	controller.coreClientset = coreClient
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
 		gzipConfigMapReferenceIndex: indexDashboardByGzipConfigMapReference,
@@ -264,6 +285,15 @@ func TestConfigMapEventReconcilesUpdatesWithoutSourceEvent(t *testing.T) {
 		)
 		return getErr == nil && bytes.Equal(target.Spec.GzipJson, newCompressed)
 	}, 2*time.Second, 10*time.Millisecond)
+}
+
+func newGzipConfigMapTestController(
+	alphaClient *v1alpha1fake.Clientset,
+	betaClient *v1beta1fake.Clientset,
+) *ConverterController {
+	controller := newDashboardTestController(alphaClient, betaClient)
+	controller.ConverterConf.ResolveGzipConfigMapRef = true
+	return controller
 }
 
 func testGzipConfigMapSource(name string, uid types.UID, configMapName, key string) *v1alpha1.GrafanaDashboard {

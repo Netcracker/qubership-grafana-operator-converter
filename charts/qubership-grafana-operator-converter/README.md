@@ -20,9 +20,15 @@ Kubernetes then deletes the converted dashboard with its source, even while the 
 
 ## gzip ConfigMap dashboard content
 
-The dashboard converter resolves legacy `spec.gzipConfigMapRef` values from `ConfigMap.binaryData` into target
-`spec.gzipJson` values. It watches ConfigMap metadata so content updates trigger reconciliation without caching every
-ConfigMap payload.
+`grafana.converter.resolveGzipConfigMapRef` is disabled by default. Enable it to convert legacy dashboards that keep
+their content in a ConfigMap through `spec.gzipConfigMapRef`. The converter then resolves those references from
+`ConfigMap.binaryData` into target `spec.gzipJson` values, and it watches ConfigMap metadata so content updates trigger
+reconciliation without caching every ConfigMap payload.
+
+The feature grants the converter `get`, `list`, and `watch` access to ConfigMaps in every watched namespace. An
+installation that leaves `watchNamespaces` empty watches the whole cluster, so the grant is cluster-wide. While the
+feature is disabled, a dashboard that uses `spec.gzipConfigMapRef` is reported as a conversion error and left
+unconverted.
 
 `grafana.converter.gzipConfigMapMaxDecompressedSize` limits the decompressed JSON size. The default is `32Mi`. Set a
 positive Kubernetes quantity when a different limit is required.
@@ -38,6 +44,7 @@ positive Kubernetes quantity when a different limit is required.
 | fullnameOverride                 | string | `""`                                                                                                                                                                 | Overrides the fully qualified app name.                                                                                                                                                                                                                   |
 | grafana.converter.deleteTargetOnSourceDeletion | bool | `false` | Delete converted dashboards with their legacy sources by adding Kubernetes owner references |
 | grafana.converter.gzipConfigMapMaxDecompressedSize | string | `"32Mi"` | Maximum decompressed size of dashboard content read through gzipConfigMapRef. |
+| grafana.converter.resolveGzipConfigMapRef | bool | `false` | Resolve legacy dashboard content referenced through gzipConfigMapRef. Grants the converter read access to ConfigMaps in every watched namespace. |
 | image.pullPolicy                 | string | `"IfNotPresent"`                                                                                                                                                     | The image pull policy to use in grafana operator container                                                                                                                                                                                                |
 | image.repository                 | string | `"ghcr.io/grafana/grafana-operator"`                                                                                                                                 | grafana operator image repository                                                                                                                                                                                                                         |
 | image.tag                        | string | `""`                                                                                                                                                                 | Overrides the image tag whose default is the chart appVersion.                                                                                                                                                                                            |

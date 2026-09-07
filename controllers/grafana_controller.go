@@ -47,6 +47,7 @@ type ConverterConfig struct {
 	Strategy                         string                `json:"strategy,omitempty" yaml:"strategy,omitempty"`
 	InstanceSelector                 *metav1.LabelSelector `json:"instanceSelector,omitempty" yaml:"instanceSelector,omitempty"`
 	DeleteTargetOnSourceDeletion     bool                  `json:"deleteTargetOnSourceDeletion,omitempty" yaml:"deleteTargetOnSourceDeletion,omitempty"`
+	ResolveGzipConfigMapRef          bool                  `json:"resolveGzipConfigMapRef,omitempty" yaml:"resolveGzipConfigMapRef,omitempty"`
 	GzipConfigMapMaxDecompressedSize string                `json:"gzipConfigMapMaxDecompressedSize,omitempty" yaml:"gzipConfigMapMaxDecompressedSize,omitempty"`
 	EnabledGrafanaConverter          `json:",inline" yaml:",inline"`
 }
@@ -215,20 +216,35 @@ func (c *ConverterController) configureDashboardConverter(configuredFactories []
 		if err != nil {
 			return err
 		}
-		if err = c.configureConfigMapInformer(configuredFactory.scope, configuredFactory.clusterWide, dashboardInformer.GetIndexer(), clients.Metadata, resyncPeriod); err != nil {
+		if err = c.configureGzipConfigMapResolution(configuredFactory, dashboardInformer, clients.Metadata, resyncPeriod); err != nil {
 			return err
 		}
 	}
 	return c.configureTargetDashboardInformers(configuredFactories, clients.V1beta1, resyncPeriod)
 }
 
-func (c *ConverterController) configureSourceDashboardInformer(factory v1alpha1informers.SharedInformerFactory) (cache.SharedIndexInformer, error) {
-	dashboardInformer := factory.Integreatly().V1alpha1().GrafanaDashboards().Informer()
+// configureGzipConfigMapResolution wires the ConfigMap index and informer that resolve gzipConfigMapRef content.
+// Both stay unconfigured unless the feature is enabled, because they require read access to every watched ConfigMap.
+func (c *ConverterController) configureGzipConfigMapResolution(configuredFactory configuredInformerFactory, dashboardInformer cache.SharedIndexInformer, metadataClient metadata.Interface, resyncPeriod time.Duration) error {
+	if !c.ConverterConf.ResolveGzipConfigMapRef {
+		return nil
+	}
 	if err := dashboardInformer.AddIndexers(cache.Indexers{
 		gzipConfigMapReferenceIndex: indexDashboardByGzipConfigMapReference,
 	}); err != nil {
-		return nil, fmt.Errorf("cannot index GrafanaDashboards by gzipConfigMapRef: %w", err)
+		return fmt.Errorf("cannot index GrafanaDashboards by gzipConfigMapRef: %w", err)
 	}
+	return c.configureConfigMapInformer(
+		configuredFactory.scope,
+		configuredFactory.clusterWide,
+		dashboardInformer.GetIndexer(),
+		metadataClient,
+		resyncPeriod,
+	)
+}
+
+func (c *ConverterController) configureSourceDashboardInformer(factory v1alpha1informers.SharedInformerFactory) (cache.SharedIndexInformer, error) {
+	dashboardInformer := factory.Integreatly().V1alpha1().GrafanaDashboards().Informer()
 	if _, err := dashboardInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueSourceDashboard,
 		UpdateFunc: func(_, newObject any) { c.enqueueSourceDashboard(newObject) },
