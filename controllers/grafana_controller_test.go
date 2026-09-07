@@ -55,6 +55,39 @@ func TestNewGrafanaConverterControllerConfiguresInformerScopes(t *testing.T) {
 	}
 }
 
+func TestNamespaceNamedClusterWideStaysNamespaceScoped(t *testing.T) {
+	t.Setenv(WatchNamespaceEnvVar, clusterWideScope)
+	configPath := writeConverterConfig(t, "enable: true\ndashboard: true\n")
+	betaClient := v1beta1fake.NewSimpleClientset()
+
+	controller, err := NewGrafanaConverterController(
+		context.Background(),
+		configPath,
+		v1alpha1fake.NewSimpleClientset(),
+		betaClient,
+		0,
+		logr.Discard(),
+	)
+
+	require.NoError(t, err)
+	require.Len(t, controller.v1beta1InformerFactory, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	t.Cleanup(cancel)
+	controller.v1beta1InformerFactory[0].factory.Start(ctx.Done())
+	controller.v1beta1InformerFactory[0].factory.WaitForCacheSync(ctx.Done())
+
+	var observed bool
+	for _, action := range betaClient.Actions() {
+		if action.GetResource().Resource != "grafanadashboards" {
+			continue
+		}
+		observed = true
+		assert.Equal(t, clusterWideScope, action.GetNamespace(),
+			"a namespace named %q must stay namespace scoped", clusterWideScope)
+	}
+	assert.True(t, observed, "the target dashboard informer must watch GrafanaDashboards")
+}
+
 func TestConverterReadinessFollowsInformerCacheSynchronization(t *testing.T) {
 	firstFactory := &fakeInformerFactory{syncResults: map[reflect.Type]bool{reflect.TypeOf(v1alpha1.GrafanaDashboard{}): true}}
 	secondFactory := &fakeInformerFactory{syncResults: map[reflect.Type]bool{reflect.TypeOf(v1alpha1.GrafanaDashboard{}): true}}

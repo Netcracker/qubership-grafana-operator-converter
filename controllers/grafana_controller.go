@@ -24,6 +24,7 @@ import (
 )
 
 const (
+	clusterWideScope               = "cluster-wide"
 	defaultCacheSyncTimeout        = 2 * time.Minute
 	defaultDashboardAPITimeout     = 30 * time.Second
 	dashboardRetryInitialBackoff   = 5 * time.Millisecond
@@ -57,8 +58,12 @@ type scopedInformerFactory struct {
 }
 
 type configuredInformerFactory struct {
-	scope   string
-	factory v1alpha1informers.SharedInformerFactory
+	// scope is the watched namespace, or clusterWideScope when clusterWide is set.
+	// clusterWideScope is itself a valid namespace name, so branch on clusterWide
+	// rather than on this value.
+	scope       string
+	clusterWide bool
+	factory     v1alpha1informers.SharedInformerFactory
 }
 
 type configuredV1beta1InformerFactory struct {
@@ -110,8 +115,9 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 		configuredFactories := make([]configuredInformerFactory, 0, max(1, len(namespaces)))
 		if len(namespaces) == 0 {
 			configuredFactories = append(configuredFactories, configuredInformerFactory{
-				scope:   "cluster-wide",
-				factory: v1alpha1informers.NewSharedInformerFactory(v1alpha1clientset, resyncPeriod),
+				scope:       clusterWideScope,
+				clusterWide: true,
+				factory:     v1alpha1informers.NewSharedInformerFactory(v1alpha1clientset, resyncPeriod),
 			})
 		} else {
 			for _, ns := range namespaces {
@@ -137,7 +143,7 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 			configuredV1beta1Factories := make([]configuredV1beta1InformerFactory, 0, len(configuredFactories))
 			for _, configuredFactory := range configuredFactories {
 				var factory v1beta1informers.SharedInformerFactory
-				if configuredFactory.scope == "cluster-wide" {
+				if configuredFactory.clusterWide {
 					factory = v1beta1informers.NewSharedInformerFactory(v1beta1clientset, resyncPeriod)
 				} else {
 					factory = v1beta1informers.NewSharedInformerFactoryWithOptions(
