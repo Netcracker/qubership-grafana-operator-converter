@@ -242,6 +242,14 @@ func (c *ConverterController) resolveGzipConfigMapReference(ctx context.Context,
 	if reference == nil {
 		return nil
 	}
+	if !c.ConverterConf.ResolveGzipConfigMapRef {
+		return newPermanentDashboardError(
+			"source GrafanaDashboard %s/%s sets spec.gzipConfigMapRef while gzipConfigMapRef resolution is disabled; "+
+				"set grafana.converter.resolveGzipConfigMapRef to true to convert it",
+			source.Namespace,
+			source.Name,
+		)
+	}
 	if source.Spec.GzipJson != nil {
 		return newPermanentDashboardError("source GrafanaDashboard cannot set both spec.gzipJson and spec.gzipConfigMapRef")
 	}
@@ -323,7 +331,7 @@ func dashboardDesiredStateEqual(actual, desired *v1beta1.GrafanaDashboard) bool 
 }
 
 func classifyDashboardWriteError(operation string, err error) error {
-	if apierrs.IsInvalid(err) || apierrs.IsBadRequest(err) {
+	if apierrs.IsInvalid(err) || apierrs.IsBadRequest(err) || apierrs.IsRequestEntityTooLargeError(err) {
 		return newPermanentDashboardError("%s: %w", operation, err)
 	}
 	return fmt.Errorf("%s: %w", operation, err)
