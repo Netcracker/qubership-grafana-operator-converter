@@ -12,6 +12,12 @@ Install the Grafana Operator `grafana.integreatly.org/v1beta1` CRDs from the
 chart before installing this chart. This chart contains only the legacy `integreatly.org/v1alpha1` CRDs that the
 converter reads as migration sources.
 
+## Dashboard lifecycle
+
+Converted dashboards remain after their legacy sources are deleted by default. Set
+`grafana.converter.deleteTargetOnSourceDeletion=true` to add a Kubernetes owner reference to each converted dashboard.
+Kubernetes then deletes the converted dashboard with its source, even while the converter is not running.
+
 ## Configuration
 
 <!-- markdownlint-disable line-length no-bare-urls table-column-style -->
@@ -21,6 +27,7 @@ converter reads as migration sources.
 | affinity                         | object | `{}`                                                                                                                                                                 | pod affinity                                                                                                                                                                                                                                              |
 | env                              | list   | `[]`                                                                                                                                                                 | Additional environment variables. WATCH_NAMESPACE and WATCH_NAMESPACE_SELECTOR are reserved.                                                                                                                                                             |
 | fullnameOverride                 | string | `""`                                                                                                                                                                 | Overrides the fully qualified app name.                                                                                                                                                                                                                   |
+| grafana.converter.deleteTargetOnSourceDeletion | bool | `false` | Delete converted dashboards with their legacy sources by adding Kubernetes owner references |
 | image.pullPolicy                 | string | `"IfNotPresent"`                                                                                                                                                     | The image pull policy to use in grafana operator container                                                                                                                                                                                                |
 | image.repository                 | string | `"ghcr.io/grafana/grafana-operator"`                                                                                                                                 | grafana operator image repository                                                                                                                                                                                                                         |
 | image.tag                        | string | `""`                                                                                                                                                                 | Overrides the image tag whose default is the chart appVersion.                                                                                                                                                                                            |

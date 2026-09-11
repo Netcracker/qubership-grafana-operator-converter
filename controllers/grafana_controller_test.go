@@ -44,6 +44,8 @@ func TestNewGrafanaConverterControllerConfiguresInformerScopes(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedScopes, controller.informerScopes())
+			assert.Len(t, controller.v1beta1InformerFactory, len(test.expectedScopes))
+			assert.NotNil(t, controller.dashboardQueue)
 			readinessErr := controller.ReadinessCheck(nil)
 			require.Error(t, readinessErr)
 			for _, scope := range test.expectedScopes {
@@ -51,6 +53,39 @@ func TestNewGrafanaConverterControllerConfiguresInformerScopes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNamespaceNamedClusterWideStaysNamespaceScoped(t *testing.T) {
+	t.Setenv(WatchNamespaceEnvVar, clusterWideScope)
+	configPath := writeConverterConfig(t, "enable: true\ndashboard: true\n")
+	betaClient := v1beta1fake.NewSimpleClientset()
+
+	controller, err := NewGrafanaConverterController(
+		context.Background(),
+		configPath,
+		v1alpha1fake.NewSimpleClientset(),
+		betaClient,
+		0,
+		logr.Discard(),
+	)
+
+	require.NoError(t, err)
+	require.Len(t, controller.v1beta1InformerFactory, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	t.Cleanup(cancel)
+	controller.v1beta1InformerFactory[0].factory.Start(ctx.Done())
+	controller.v1beta1InformerFactory[0].factory.WaitForCacheSync(ctx.Done())
+
+	var observed bool
+	for _, action := range betaClient.Actions() {
+		if action.GetResource().Resource != "grafanadashboards" {
+			continue
+		}
+		observed = true
+		assert.Equal(t, clusterWideScope, action.GetNamespace(),
+			"a namespace named %q must stay namespace scoped", clusterWideScope)
+	}
+	assert.True(t, observed, "the target dashboard informer must watch GrafanaDashboards")
 }
 
 func TestConverterReadinessFollowsInformerCacheSynchronization(t *testing.T) {
@@ -147,13 +182,14 @@ func TestReadConfigRejectsMalformedYAML(t *testing.T) {
 }
 
 func TestReadConfigAcceptsValidConfig(t *testing.T) {
-	path := writeConverterConfig(t, "enable: true\ndashboard: true\n")
+	path := writeConverterConfig(t, "enable: true\ndashboard: true\ndeleteTargetOnSourceDeletion: true\n")
 
 	config, err := ReadConfig(path)
 
 	require.NoError(t, err)
 	assert.True(t, config.Enable)
 	assert.True(t, config.Dashboard)
+	assert.True(t, config.DeleteTargetOnSourceDeletion)
 }
 
 func TestReadConfigKeepsMissingFileAsDisabledMode(t *testing.T) {

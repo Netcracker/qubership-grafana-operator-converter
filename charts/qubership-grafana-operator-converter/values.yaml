@@ -117,6 +117,8 @@ serviceMonitor:
 grafana:
   converter:
     enable: true
+    # -- Delete converted dashboards with their legacy sources by adding Kubernetes owner references
+    deleteTargetOnSourceDeletion: false
     dashboard: true
     datasource: true
     folder: true
