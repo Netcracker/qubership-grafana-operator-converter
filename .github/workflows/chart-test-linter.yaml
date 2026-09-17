@@ -1,16 +1,10 @@
 name: Lint and Test Helm Charts
-
-permissions:
-  contents: read
+run-name: "Ref: ${{ github.ref_name }}. On ${{ github.event_name }}"
 
 on:
   pull_request:
     branches:
       - 'main'
-    paths:
-      - 'charts/**'
-      - 'tests/helm/**'
-      - 'tools/verify-chart.sh'
   push:
     branches:
       - main
@@ -20,9 +14,62 @@ on:
       - 'tools/verify-chart.sh'
   workflow_dispatch: null
 
+concurrency:
+  group: chart-${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions: {}
+
 jobs:
-  lint-test:
+  changes:
+    name: Detect chart changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      chart: ${{ steps.filter.outputs.chart }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Match changed files against the chart paths
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" != 'pull_request' ]]; then
+            echo 'chart=true' >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          changed="$(git diff --no-renames --name-only "${BASE_SHA}...${HEAD_SHA}")"
+          echo "Changed files:"
+          printf '%s\n' "${changed}"
+
+          chart=false
+          while IFS= read -r file; do
+            case "${file}" in
+              charts/*|tests/helm/*|tools/verify-chart.sh|.github/workflows/chart-test-linter.yaml)
+                chart=true
+                break
+                ;;
+            esac
+          done <<< "${changed}"
+          echo "chart=${chart}" >> "${GITHUB_OUTPUT}"
+
+  lint-test:
+    needs: changes
+    if: ${{ needs.changes.outputs.chart == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,3 +90,17 @@ jobs:
 
       - name: Verify rendered chart contracts
         run: ./tools/verify-chart.sh
+
+  chart-gate:
+    name: Chart Gate
+    needs: [changes, lint-test]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require chart validation when applicable
+        if: >-
+          needs.changes.result != 'success' ||
+          (needs.changes.outputs.chart != 'false' && needs.lint-test.result != 'success')
+        run: exit 1
