@@ -27,7 +27,8 @@ func (c *ConverterController) convertGrafanaDashboard(src *v1alpha1.GrafanaDashb
 	dst.Spec.Url = src.Spec.Url
 	dst.Spec.Jsonnet = src.Spec.Jsonnet
 	dst.Spec.ConfigMapRef = src.Spec.ConfigMapRef
-	// src.Spec.GzipConfigMapRef
+	// GzipConfigMapRef is not available in the target API.
+	// The reconciler reads the referenced gzip data and stores it in GzipJson.
 	dst.Spec.InstanceSelector = c.ConverterConf.InstanceSelector
 	dst.Spec.AllowCrossNamespaceImport = ptr.To(true)
 	dst.Spec.FolderTitle = src.Spec.CustomFolderName
