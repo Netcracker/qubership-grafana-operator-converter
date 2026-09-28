@@ -120,6 +120,12 @@ grafana:
     # -- Delete converted dashboards with their legacy sources by adding Kubernetes owner references
     deleteTargetOnSourceDeletion: false
     dashboard: true
+    # -- Resolve legacy dashboard content referenced through gzipConfigMapRef.
+    # Grants the converter read access to ConfigMaps in every watched namespace.
+    resolveGzipConfigMapRef: false
+    # -- Maximum decompressed size of dashboard content read through gzipConfigMapRef.
+    # Must be a positive Kubernetes quantity.
+    gzipConfigMapMaxDecompressedSize: 32Mi
     datasource: true
     folder: true
     notification: true

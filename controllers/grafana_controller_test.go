@@ -11,11 +11,16 @@ import (
 	"time"
 
 	v1alpha1fake "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned/fake"
+	v1alpha1informers "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/informers/externalversions"
 	v1beta1fake "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1beta1/clientset/versioned/fake"
 	"github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	kubefake "k8s.io/client-go/kubernetes/fake"
+	metadatafake "k8s.io/client-go/metadata/fake"
 )
 
 func TestNewGrafanaConverterControllerConfiguresInformerScopes(t *testing.T) {
@@ -32,12 +37,18 @@ func TestNewGrafanaConverterControllerConfiguresInformerScopes(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv(WatchNamespaceEnvVar, test.watchNamespace)
 			configPath := writeConverterConfig(t, "enable: true\ndashboard: true\ndatasource: true\nfolder: true\nnotification: true\n")
+			metadataScheme := runtime.NewScheme()
+			require.NoError(t, metav1.AddMetaToScheme(metadataScheme))
 
 			controller, err := NewGrafanaConverterController(
 				context.Background(),
 				configPath,
-				v1alpha1fake.NewSimpleClientset(),
-				v1beta1fake.NewSimpleClientset(),
+				ConverterClients{
+					V1alpha1: v1alpha1fake.NewSimpleClientset(),
+					V1beta1:  v1beta1fake.NewSimpleClientset(),
+					Core:     kubefake.NewSimpleClientset(),
+					Metadata: metadatafake.NewSimpleMetadataClient(metadataScheme),
+				},
 				0,
 				logr.Discard(),
 			)
@@ -45,7 +56,9 @@ func TestNewGrafanaConverterControllerConfiguresInformerScopes(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedScopes, controller.informerScopes())
 			assert.Len(t, controller.v1beta1InformerFactory, len(test.expectedScopes))
+			assert.Empty(t, controller.configMapInformerFactory)
 			assert.NotNil(t, controller.dashboardQueue)
+			assert.Equal(t, int64(defaultGzipConfigMapMaxDecompressedSize), controller.gzipConfigMapMaxDecompressedSize)
 			readinessErr := controller.ReadinessCheck(nil)
 			require.Error(t, readinessErr)
 			for _, scope := range test.expectedScopes {
@@ -58,13 +71,19 @@ func TestNewGrafanaConverterControllerConfiguresInformerScopes(t *testing.T) {
 func TestNamespaceNamedClusterWideStaysNamespaceScoped(t *testing.T) {
 	t.Setenv(WatchNamespaceEnvVar, clusterWideScope)
 	configPath := writeConverterConfig(t, "enable: true\ndashboard: true\n")
+	metadataScheme := runtime.NewScheme()
+	require.NoError(t, metav1.AddMetaToScheme(metadataScheme))
 	betaClient := v1beta1fake.NewSimpleClientset()
 
 	controller, err := NewGrafanaConverterController(
 		context.Background(),
 		configPath,
-		v1alpha1fake.NewSimpleClientset(),
-		betaClient,
+		ConverterClients{
+			V1alpha1: v1alpha1fake.NewSimpleClientset(),
+			V1beta1:  betaClient,
+			Core:     kubefake.NewSimpleClientset(),
+			Metadata: metadatafake.NewSimpleMetadataClient(metadataScheme),
+		},
 		0,
 		logr.Discard(),
 	)
@@ -86,6 +105,89 @@ func TestNamespaceNamedClusterWideStaysNamespaceScoped(t *testing.T) {
 			"a namespace named %q must stay namespace scoped", clusterWideScope)
 	}
 	assert.True(t, observed, "the target dashboard informer must watch GrafanaDashboards")
+}
+
+func TestConfigMapInformerCachesOnlyMetadata(t *testing.T) {
+	t.Setenv(WatchNamespaceEnvVar, "product-a")
+	configPath := writeConverterConfig(t, "enable: true\ndashboard: true\nresolveGzipConfigMapRef: true\n")
+	metadataScheme := runtime.NewScheme()
+	require.NoError(t, metav1.AddMetaToScheme(metadataScheme))
+	configMapMetadata := &metav1.PartialObjectMetadata{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
+		ObjectMeta: metav1.ObjectMeta{Name: "dashboard-content", Namespace: "product-a"},
+	}
+	controller, err := NewGrafanaConverterController(
+		context.Background(),
+		configPath,
+		ConverterClients{
+			V1alpha1: v1alpha1fake.NewSimpleClientset(),
+			V1beta1:  v1beta1fake.NewSimpleClientset(),
+			Core:     kubefake.NewSimpleClientset(),
+			Metadata: metadatafake.NewSimpleMetadataClient(metadataScheme, configMapMetadata),
+		},
+		0,
+		logr.Discard(),
+	)
+	require.NoError(t, err)
+	require.Len(t, controller.configMapInformerFactory, 1)
+	factory, ok := controller.configMapInformerFactory[0].factory.(*singleInformerFactory)
+	require.True(t, ok)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	t.Cleanup(cancel)
+
+	factory.Start(ctx.Done())
+	syncResults := factory.WaitForCacheSync(ctx.Done())
+
+	for _, synced := range syncResults {
+		assert.True(t, synced)
+	}
+	require.Len(t, factory.informer.GetStore().List(), 1)
+	assert.IsType(t, &metav1.PartialObjectMetadata{}, factory.informer.GetStore().List()[0])
+}
+
+func TestConfigMapInformerRequiresGzipConfigMapRefResolution(t *testing.T) {
+	tests := []struct {
+		name                     string
+		resolveGzipConfigMapRef  bool
+		expectedConfigMapFactory int
+	}{
+		{name: "disabled by default", expectedConfigMapFactory: 0},
+		{name: "enabled", resolveGzipConfigMapRef: true, expectedConfigMapFactory: 1},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(WatchNamespaceEnvVar, "product-a")
+			config := "enable: true\ndashboard: true\n"
+			if test.resolveGzipConfigMapRef {
+				config += "resolveGzipConfigMapRef: true\n"
+			}
+			metadataScheme := runtime.NewScheme()
+			require.NoError(t, metav1.AddMetaToScheme(metadataScheme))
+
+			controller, err := NewGrafanaConverterController(
+				context.Background(),
+				writeConverterConfig(t, config),
+				ConverterClients{
+					V1alpha1: v1alpha1fake.NewSimpleClientset(),
+					V1beta1:  v1beta1fake.NewSimpleClientset(),
+					Core:     kubefake.NewSimpleClientset(),
+					Metadata: metadatafake.NewSimpleMetadataClient(metadataScheme),
+				},
+				0,
+				logr.Discard(),
+			)
+
+			require.NoError(t, err)
+			assert.Len(t, controller.configMapInformerFactory, test.expectedConfigMapFactory)
+			require.Len(t, controller.v1alpha1InformerFactory, 1)
+			factory, ok := controller.v1alpha1InformerFactory[0].factory.(v1alpha1informers.SharedInformerFactory)
+			require.True(t, ok)
+			indexers := factory.Integreatly().V1alpha1().GrafanaDashboards().Informer().GetIndexer().GetIndexers()
+			_, indexed := indexers[gzipConfigMapReferenceIndex]
+			assert.Equal(t, test.resolveGzipConfigMapRef, indexed)
+		})
+	}
 }
 
 func TestConverterReadinessFollowsInformerCacheSynchronization(t *testing.T) {
@@ -182,7 +284,7 @@ func TestReadConfigRejectsMalformedYAML(t *testing.T) {
 }
 
 func TestReadConfigAcceptsValidConfig(t *testing.T) {
-	path := writeConverterConfig(t, "enable: true\ndashboard: true\ndeleteTargetOnSourceDeletion: true\n")
+	path := writeConverterConfig(t, "enable: true\ndashboard: true\ndeleteTargetOnSourceDeletion: true\ngzipConfigMapMaxDecompressedSize: 48Mi\n")
 
 	config, err := ReadConfig(path)
 
@@ -190,6 +292,44 @@ func TestReadConfigAcceptsValidConfig(t *testing.T) {
 	assert.True(t, config.Enable)
 	assert.True(t, config.Dashboard)
 	assert.True(t, config.DeleteTargetOnSourceDeletion)
+	assert.Equal(t, "48Mi", config.GzipConfigMapMaxDecompressedSize)
+}
+
+func TestReadConfigRejectsInvalidGzipConfigMapSize(t *testing.T) {
+	path := writeConverterConfig(t, "enable: true\ndashboard: true\ngzipConfigMapMaxDecompressedSize: unlimited\n")
+
+	_, err := ReadConfig(path)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid gzipConfigMapMaxDecompressedSize")
+}
+
+func TestParseGzipConfigMapMaxDecompressedSize(t *testing.T) {
+	tests := []struct {
+		name       string
+		configured string
+		expected   int64
+		errorMatch string
+	}{
+		{name: "default", expected: defaultGzipConfigMapMaxDecompressedSize},
+		{name: "configured", configured: "48Mi", expected: 48 * 1024 * 1024},
+		{name: "invalid quantity", configured: "large", errorMatch: "invalid gzipConfigMapMaxDecompressedSize"},
+		{name: "zero", configured: "0", errorMatch: "must be a positive whole number of bytes"},
+		{name: "negative", configured: "-1Mi", errorMatch: "must be a positive whole number of bytes"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			actual, err := parseGzipConfigMapMaxDecompressedSize(test.configured)
+			if test.errorMatch != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), test.errorMatch)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.expected, actual)
+		})
+	}
 }
 
 func TestReadConfigKeepsMissingFileAsDisabledMode(t *testing.T) {
