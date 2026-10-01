@@ -150,6 +150,14 @@ func (c *ConverterController) reconcileDashboard(ctx context.Context, item dashb
 		return nil
 	}
 
+	selected, err := c.dashboardSelected(ctx, source)
+	if err != nil {
+		return err
+	}
+	if !selected {
+		return c.deleteManagedDashboardTarget(ctx, source.Namespace, source.Name)
+	}
+
 	desired := c.convertGrafanaDashboard(source)
 	if validationErr := validateConvertedDashboard(desired); validationErr != nil {
 		return newPermanentDashboardError("source GrafanaDashboard is invalid: %w", validationErr)

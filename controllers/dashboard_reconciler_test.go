@@ -18,10 +18,12 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/util/workqueue"
@@ -308,6 +310,286 @@ func TestConverterShutdownCancelsDashboardWorker(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("converter did not stop after context cancellation")
 	}
+}
+
+func TestDeselectedDashboard(t *testing.T) {
+	dashboardSelector := []*metav1.LabelSelector{{
+		MatchLabels: map[string]string{"dashboards": "platform"},
+	}}
+
+	t.Run("selected source creates a target", func(t *testing.T) {
+		t.Setenv(WatchNamespaceEnvVar, "product-a")
+		source := testSourceDashboard("sample", "source-uid", "desired")
+		source.Labels = map[string]string{"dashboards": "platform"}
+		alphaClient := v1alpha1fake.NewSimpleClientset(source)
+		betaClient := v1beta1fake.NewSimpleClientset()
+		controller := newDashboardTestController(alphaClient, betaClient)
+		controller.ConverterConf.DashboardLabelSelector = dashboardSelector
+		controller.ConverterConf.DashboardNamespaceSelector = &metav1.LabelSelector{
+			MatchLabels: map[string]string{"tenant": "other"},
+		}
+		var namespaceReads atomic.Int32
+		controller.kubeClient = namespaceReadClient(t, &namespaceReads, nil)
+
+		require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+			Namespace: source.Namespace,
+			Name:      source.Name,
+		}))
+
+		actual, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+			context.Background(), source.Name, metav1.GetOptions{},
+		)
+		require.NoError(t, err)
+		assert.Equal(t, "desired", actual.Spec.Json)
+		assert.Equal(t, managedByOperatorLabelValue, actual.Labels[managedByOperatorLabelKey])
+		assert.Zero(t, namespaceReads.Load(), "reconcileDashboard(%s)", source.Name)
+	})
+
+	t.Run("unselected source does not create a target", func(t *testing.T) {
+		t.Setenv(WatchNamespaceEnvVar, "product-a")
+		source := testSourceDashboard("sample", "source-uid", "desired")
+		source.Labels = map[string]string{"dashboards": "product"}
+		alphaClient := v1alpha1fake.NewSimpleClientset(source)
+		betaClient := v1beta1fake.NewSimpleClientset()
+		controller := newDashboardTestController(alphaClient, betaClient)
+		controller.ConverterConf.DashboardLabelSelector = dashboardSelector
+
+		require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+			Namespace: source.Namespace,
+			Name:      source.Name,
+		}))
+
+		_, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+			context.Background(), source.Name, metav1.GetOptions{},
+		)
+		if err == nil || !apierrs.IsNotFound(err) {
+			t.Errorf("get target GrafanaDashboard %s/%s = %v, want NotFound", source.Namespace, source.Name, err)
+		}
+	})
+
+	t.Run("unselected source deletes a converter-managed target", func(t *testing.T) {
+		t.Setenv(WatchNamespaceEnvVar, "product-a")
+		source := testSourceDashboard("sample", "source-uid", "desired")
+		source.Labels = map[string]string{"dashboards": "product"}
+		target := testTargetDashboard("sample", "desired")
+		alphaClient := v1alpha1fake.NewSimpleClientset(source)
+		betaClient := v1beta1fake.NewSimpleClientset(target)
+		controller := newDashboardTestController(alphaClient, betaClient)
+		controller.ConverterConf.DashboardLabelSelector = dashboardSelector
+
+		require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+			Namespace: source.Namespace,
+			Name:      source.Name,
+		}))
+
+		_, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+			context.Background(), source.Name, metav1.GetOptions{},
+		)
+		if err == nil || !apierrs.IsNotFound(err) {
+			t.Errorf("get target GrafanaDashboard %s/%s = %v, want NotFound", source.Namespace, source.Name, err)
+		}
+	})
+
+	t.Run("unselected source preserves an unmanaged target", func(t *testing.T) {
+		t.Setenv(WatchNamespaceEnvVar, "product-a")
+		source := testSourceDashboard("sample", "source-uid", "desired")
+		source.Labels = map[string]string{"dashboards": "product"}
+		target := testTargetDashboard("sample", "foreign")
+		delete(target.Labels, managedByOperatorLabelKey)
+		alphaClient := v1alpha1fake.NewSimpleClientset(source)
+		betaClient := v1beta1fake.NewSimpleClientset(target)
+		controller := newDashboardTestController(alphaClient, betaClient)
+		controller.ConverterConf.DashboardLabelSelector = dashboardSelector
+
+		err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+			Namespace: source.Namespace,
+			Name:      source.Name,
+		})
+
+		require.Error(t, err)
+		if !isPermanentDashboardError(err) {
+			t.Errorf("reconcileDashboard(%s) error = %v, want a permanent error", source.Name, err)
+		}
+		actual, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+			context.Background(), source.Name, metav1.GetOptions{},
+		)
+		require.NoError(t, getErr)
+		assert.Equal(t, target, actual)
+	})
+
+	t.Run("concurrent target deletion is success", func(t *testing.T) {
+		t.Setenv(WatchNamespaceEnvVar, "product-a")
+		source := testSourceDashboard("sample", "source-uid", "desired")
+		source.Labels = map[string]string{"dashboards": "product"}
+		target := testTargetDashboard("sample", "desired")
+		alphaClient := v1alpha1fake.NewSimpleClientset(source)
+		betaClient := v1beta1fake.NewSimpleClientset(target)
+		var deletes atomic.Int32
+		betaClient.PrependReactor("delete", "grafanadashboards", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			deletes.Add(1)
+			return true, nil, apierrs.NewNotFound(v1beta1.Resource("grafanadashboards"), action.(k8stesting.DeleteAction).GetName())
+		})
+		controller := newDashboardTestController(alphaClient, betaClient)
+		controller.ConverterConf.DashboardLabelSelector = dashboardSelector
+
+		err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+			Namespace: source.Namespace,
+			Name:      source.Name,
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, int32(1), deletes.Load(), "delete target GrafanaDashboard %s/%s", source.Namespace, source.Name)
+	})
+
+	t.Run("cluster-wide namespace selector deletes a managed target", func(t *testing.T) {
+		t.Setenv(WatchNamespaceEnvVar, "")
+		source := testSourceDashboard("sample", "source-uid", "desired")
+		source.Labels = map[string]string{"dashboards": "platform"}
+		target := testTargetDashboard("sample", "desired")
+		alphaClient := v1alpha1fake.NewSimpleClientset(source)
+		betaClient := v1beta1fake.NewSimpleClientset(target)
+		controller := newDashboardTestController(alphaClient, betaClient)
+		controller.ConverterConf.DashboardLabelSelector = dashboardSelector
+		controller.ConverterConf.DashboardNamespaceSelector = &metav1.LabelSelector{
+			MatchLabels: map[string]string{"tenant": "platform"},
+		}
+		controller.kubeClient = k8sfake.NewSimpleClientset(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+			Name:   source.Namespace,
+			Labels: map[string]string{"tenant": "product"},
+		}})
+
+		require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+			Namespace: source.Namespace,
+			Name:      source.Name,
+		}))
+
+		_, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+			context.Background(), source.Name, metav1.GetOptions{},
+		)
+		if err == nil || !apierrs.IsNotFound(err) {
+			t.Errorf("get target GrafanaDashboard %s/%s = %v, want NotFound", source.Namespace, source.Name, err)
+		}
+	})
+
+	t.Run("namespace lookup failure leaves the managed target in place", func(t *testing.T) {
+		t.Setenv(WatchNamespaceEnvVar, "")
+		source := testSourceDashboard("sample", "source-uid", "desired")
+		source.Labels = map[string]string{"dashboards": "platform"}
+		target := testTargetDashboard("sample", "desired")
+		alphaClient := v1alpha1fake.NewSimpleClientset(source)
+		betaClient := v1beta1fake.NewSimpleClientset(target)
+		controller := newDashboardTestController(alphaClient, betaClient)
+		controller.ConverterConf.DashboardLabelSelector = dashboardSelector
+		controller.ConverterConf.DashboardNamespaceSelector = &metav1.LabelSelector{
+			MatchLabels: map[string]string{"tenant": "platform"},
+		}
+		kubeClient := k8sfake.NewSimpleClientset(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+			Name:   source.Namespace,
+			Labels: map[string]string{"tenant": "platform"},
+		}})
+		kubeClient.PrependReactor("*", "namespaces", func(k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, errors.New("namespace lookup failed")
+		})
+		controller.kubeClient = kubeClient
+
+		err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+			Namespace: source.Namespace,
+			Name:      source.Name,
+		})
+
+		require.Error(t, err)
+		if isPermanentDashboardError(err) {
+			t.Errorf("reconcileDashboard(%s) error = %v, want a retryable error", source.Name, err)
+		}
+		actual, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+			context.Background(), source.Name, metav1.GetOptions{},
+		)
+		require.NoError(t, getErr)
+		assert.Equal(t, target, actual)
+	})
+}
+
+func TestRecreatedDashboard(t *testing.T) {
+	t.Setenv(WatchNamespaceEnvVar, "product-a")
+	source := testSourceDashboard("sample", "source-uid", "desired")
+	source.Labels = map[string]string{"dashboards": "product"}
+	target := testTargetDashboard("sample", "stale")
+	alphaClient := v1alpha1fake.NewSimpleClientset(source)
+	betaClient := v1beta1fake.NewSimpleClientset(target)
+	instanceSelector := &metav1.LabelSelector{MatchLabels: map[string]string{"app.kubernetes.io/component": "grafana"}}
+	controller := newDashboardTestController(alphaClient, betaClient)
+	controller.ConverterConf.DashboardLabelSelector = []*metav1.LabelSelector{{
+		MatchLabels: map[string]string{"dashboards": "platform"},
+	}}
+	controller.ConverterConf.InstanceSelector = instanceSelector
+
+	require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+		Namespace: source.Namespace,
+		Name:      source.Name,
+	}))
+	_, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+		context.Background(), source.Name, metav1.GetOptions{},
+	)
+	if err == nil || !apierrs.IsNotFound(err) {
+		t.Fatalf("get target GrafanaDashboard %s/%s = %v, want NotFound", source.Namespace, source.Name, err)
+	}
+
+	source.Labels = map[string]string{"dashboards": "platform"}
+	_, err = alphaClient.IntegreatlyV1alpha1().GrafanaDashboards(source.Namespace).Update(
+		context.Background(), source, metav1.UpdateOptions{},
+	)
+	require.NoError(t, err)
+	require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+		Namespace: source.Namespace,
+		Name:      source.Name,
+	}))
+
+	actual, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+		context.Background(), source.Name, metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, instanceSelector, actual.Spec.InstanceSelector)
+	assert.Equal(t, "desired", actual.Spec.Json)
+}
+
+func TestDeletingSourceLeavesManagedTargetInPlace(t *testing.T) {
+	t.Setenv(WatchNamespaceEnvVar, "product-a")
+	source := testSourceDashboard("sample", "source-uid", "desired")
+	now := metav1.Now()
+	source.DeletionTimestamp = &now
+	source.Labels = map[string]string{"dashboards": "product"}
+	target := testTargetDashboard("sample", "desired")
+	alphaClient := v1alpha1fake.NewSimpleClientset(source)
+	betaClient := v1beta1fake.NewSimpleClientset(target)
+	controller := newDashboardTestController(alphaClient, betaClient)
+	controller.ConverterConf.DashboardLabelSelector = []*metav1.LabelSelector{{
+		MatchLabels: map[string]string{"dashboards": "platform"},
+	}}
+
+	require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+		Namespace: source.Namespace,
+		Name:      source.Name,
+	}))
+
+	actual, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(target.Namespace).Get(
+		context.Background(), target.Name, metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, target, actual)
+}
+
+func namespaceReadClient(t *testing.T, reads *atomic.Int32, namespace *corev1.Namespace) *k8sfake.Clientset {
+	t.Helper()
+	objects := []runtime.Object{}
+	if namespace != nil {
+		objects = append(objects, namespace)
+	}
+	client := k8sfake.NewSimpleClientset(objects...)
+	client.PrependReactor("*", "namespaces", func(k8stesting.Action) (bool, runtime.Object, error) {
+		reads.Add(1)
+		return true, nil, errors.New("namespace read")
+	})
+	return client
 }
 
 func newDashboardTestController(

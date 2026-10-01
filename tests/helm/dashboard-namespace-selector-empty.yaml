@@ -1,0 +1,6 @@
+grafana:
+  converter:
+    datasource: false
+    folder: false
+    notification: false
+    dashboardNamespaceSelector: {}
