@@ -441,6 +441,67 @@ func TestDeselectedDashboard(t *testing.T) {
 		assert.Equal(t, int32(1), deletes.Load(), "delete target GrafanaDashboard %s/%s", source.Namespace, source.Name)
 	})
 
+	t.Run("delete conflict leaves a replaced target in place", func(t *testing.T) {
+		t.Setenv(WatchNamespaceEnvVar, "product-a")
+		source := testSourceDashboard("sample", "source-uid", "desired")
+		source.Labels = map[string]string{"dashboards": "product"}
+		target := testTargetDashboard("sample", "desired")
+		target.ResourceVersion = "1"
+		alphaClient := v1alpha1fake.NewSimpleClientset(source)
+		betaClient := v1beta1fake.NewSimpleClientset(target)
+		stored, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+			context.Background(), source.Name, metav1.GetOptions{},
+		)
+		require.NoError(t, err)
+		betaClient.PrependReactor("delete", "grafanadashboards", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			options := action.(k8stesting.DeleteAction).GetDeleteOptions()
+			if options.Preconditions == nil || options.Preconditions.UID == nil || options.Preconditions.ResourceVersion == nil {
+				return true, nil, errors.New("delete missing UID and resourceVersion preconditions")
+			}
+			if *options.Preconditions.UID != stored.UID || *options.Preconditions.ResourceVersion != stored.ResourceVersion {
+				return true, nil, fmt.Errorf("delete preconditions UID %s resourceVersion %s, want UID %s resourceVersion %s",
+					*options.Preconditions.UID, *options.Preconditions.ResourceVersion, stored.UID, stored.ResourceVersion)
+			}
+			return true, nil, apierrs.NewConflict(v1beta1.Resource("grafanadashboards"), source.Name, errors.New("uid changed"))
+		})
+		controller := newDashboardTestController(alphaClient, betaClient)
+		controller.ConverterConf.DashboardLabelSelector = dashboardSelector
+		item := dashboardQueueItem{Namespace: source.Namespace, Name: source.Name}
+
+		err = controller.reconcileDashboard(context.Background(), item)
+
+		require.Error(t, err)
+		if isPermanentDashboardError(err) || !apierrs.IsConflict(err) {
+			t.Errorf("reconcileDashboard(%s) error = %v, want a retryable conflict", source.Name, err)
+		}
+		unchanged, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+			context.Background(), source.Name, metav1.GetOptions{},
+		)
+		require.NoError(t, getErr)
+		assert.Equal(t, stored.UID, unchanged.UID)
+
+		replacement := unchanged.DeepCopy()
+		delete(replacement.Labels, managedByOperatorLabelKey)
+		replacement.UID = "replacement-sample"
+		_, err = betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Update(
+			context.Background(), replacement, metav1.UpdateOptions{},
+		)
+		require.NoError(t, err)
+
+		err = controller.reconcileDashboard(context.Background(), item)
+
+		require.Error(t, err)
+		if !isPermanentDashboardError(err) {
+			t.Errorf("reconcileDashboard(%s) error = %v, want a permanent error", source.Name, err)
+		}
+		actual, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+			context.Background(), source.Name, metav1.GetOptions{},
+		)
+		require.NoError(t, getErr)
+		assert.Equal(t, types.UID("replacement-sample"), actual.UID)
+		assert.Empty(t, actual.Labels[managedByOperatorLabelKey])
+	})
+
 	t.Run("cluster-wide namespace selector deletes a managed target", func(t *testing.T) {
 		t.Setenv(WatchNamespaceEnvVar, "")
 		source := testSourceDashboard("sample", "source-uid", "desired")

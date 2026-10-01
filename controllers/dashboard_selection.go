@@ -75,22 +75,32 @@ func dashboardLabelsMatch(selectors []*metav1.LabelSelector, objectLabels map[st
 // enqueueDashboardsInNamespace lists legacy GrafanaDashboards in the Namespace
 // carried by object and enqueues each one. object is a *corev1.Namespace, or a
 // [cache.DeletedFinalStateUnknown] whose object is a Namespace. An unexpected
-// object, and a list error, are logged and leave the queue unchanged.
+// object is logged and not queued. A list error is logged and retried, because
+// the Namespace informer does not repeat the event while resync is disabled.
 func (c *ConverterController) enqueueDashboardsInNamespace(object any) {
 	namespace, ok := namespaceFromEvent(object)
 	if !ok {
 		c.log.Error(fmt.Errorf("received %T", object), "Cannot enqueue GrafanaDashboards for Namespace: unexpected object type")
 		return
 	}
-	dashboards, err := c.v1alpha1clientset.IntegreatlyV1alpha1().GrafanaDashboards(namespace.Name).List(c.ctx, metav1.ListOptions{})
-	if err != nil {
+	if err := c.enqueueListedDashboards(c.ctx, namespace.Name); err != nil {
 		c.log.Error(err, "Cannot list GrafanaDashboards for Namespace", "namespace", namespace.Name)
-		return
+		c.dashboardQueue.Add(dashboardQueueItem{Namespace: namespace.Name})
+	}
+}
+
+// enqueueListedDashboards lists legacy GrafanaDashboards in namespace and
+// enqueues each one. A list error is returned so the caller can retry it.
+func (c *ConverterController) enqueueListedDashboards(ctx context.Context, namespace string) error {
+	dashboards, err := c.v1alpha1clientset.IntegreatlyV1alpha1().GrafanaDashboards(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("list GrafanaDashboards in Namespace %s: %w", namespace, err)
 	}
 	for i := range dashboards.Items {
 		dashboard := &dashboards.Items[i]
 		c.dashboardQueue.Add(dashboardQueueItem{Namespace: dashboard.Namespace, Name: dashboard.Name})
 	}
+	return nil
 }
 
 // namespaceFromEvent returns the Namespace carried by a core informer event.
@@ -109,6 +119,8 @@ func namespaceFromEvent(object any) (*corev1.Namespace, bool) {
 
 // deleteManagedDashboardTarget deletes the v1beta1 GrafanaDashboard named name
 // in namespace when that object carries the converter ownership marker.
+// The delete is limited to the object that was read, by UID and resource
+// version. A conflict is returned so the caller can read the object again.
 // It returns nil when the target is already absent. A target without the
 // marker is left in place, and the error is permanent.
 func (c *ConverterController) deleteManagedDashboardTarget(ctx context.Context, namespace, name string) error {
@@ -123,7 +135,15 @@ func (c *ConverterController) deleteManagedDashboardTarget(ctx context.Context, 
 	if !isConverterManaged(target) {
 		return newPermanentDashboardError("target GrafanaDashboard %s/%s exists without the converter ownership marker", target.Namespace, target.Name)
 	}
-	if err = targetClient.Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
+	uid := target.GetUID()
+	resourceVersion := target.GetResourceVersion()
+	err = targetClient.Delete(ctx, name, metav1.DeleteOptions{
+		Preconditions: &metav1.Preconditions{
+			UID:             &uid,
+			ResourceVersion: &resourceVersion,
+		},
+	})
+	if err != nil {
 		if apierrs.IsNotFound(err) {
 			return nil
 		}

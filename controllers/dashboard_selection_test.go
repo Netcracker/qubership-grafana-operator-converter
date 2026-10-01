@@ -6,6 +6,7 @@ import (
 	"sort"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	v1alpha1fake "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned/fake"
 	"github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1"
@@ -263,23 +264,30 @@ func TestNamespaceEventWithNoDashboardsEnqueuesNothing(t *testing.T) {
 	assert.Empty(t, queuedDashboardItems(controller))
 }
 
-func TestNamespaceEventListFailureEnqueuesNoDashboards(t *testing.T) {
+func TestNamespaceListFailureRetriesAndThenEnqueuesDashboards(t *testing.T) {
 	selected := testSourceDashboard("selected", "selected-uid", "desired")
+	var lists atomic.Int32
 	alphaClient := v1alpha1fake.NewSimpleClientset(selected)
 	alphaClient.PrependReactor("list", "grafanadashboards", func(k8stesting.Action) (bool, runtime.Object, error) {
-		return true, nil, errors.New("list failed")
+		if lists.Add(1) == 1 {
+			return true, nil, errors.New("list failed")
+		}
+		return false, nil, nil
 	})
 	controller := &ConverterController{
 		ctx:               context.Background(),
 		log:               logr.Discard(),
 		v1alpha1clientset: alphaClient,
 		dashboardQueue:    newDashboardQueue(),
+		apiTimeout:        time.Second,
 	}
 	t.Cleanup(controller.dashboardQueue.ShutDown)
 
 	controller.enqueueDashboardsInNamespace(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: selected.Namespace}})
 
-	assert.Empty(t, queuedDashboardItems(controller), "enqueueDashboardsInNamespace(product-a)")
+	require.Equal(t, 1, controller.dashboardQueue.Len(), "enqueueDashboardsInNamespace(product-a)")
+	require.True(t, controller.processNextDashboard(context.Background()))
+	assert.Equal(t, []dashboardQueueItem{{Namespace: "product-a", Name: "selected"}}, queuedDashboardItems(controller))
 }
 
 func newNamespaceEventController(t *testing.T, dashboards ...*v1alpha1.GrafanaDashboard) *ConverterController {
