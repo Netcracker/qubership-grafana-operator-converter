@@ -1,0 +1,11 @@
+grafana:
+  converter:
+    datasource: false
+    folder: false
+    notification: false
+    dashboardLabelSelector:
+      - matchLabels:
+          dashboards: platform
+    dashboardNamespaceSelector:
+      matchLabels:
+        tenant: platform

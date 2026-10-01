@@ -18,6 +18,40 @@ Converted dashboards remain after their legacy sources are deleted by default. S
 `grafana.converter.deleteTargetOnSourceDeletion=true` to add a Kubernetes owner reference to each converted dashboard.
 Kubernetes then deletes the converted dashboard with its source, even while the converter is not running.
 
+When a legacy dashboard stops matching the selectors in [Dashboard selection](#dashboard-selection), the converter
+deletes the converted dashboard labeled `app.kubernetes.io/managed-by-operator=grafana-operator-converter` and leaves
+the legacy dashboard in place. `grafana.converter.deleteTargetOnSourceDeletion` applies when the legacy dashboard is
+deleted.
+
+## Dashboard selection
+
+`grafana.converter.dashboardLabelSelector` selects which legacy `integreatly.org/v1alpha1` dashboards the converter
+creates as `grafana.integreatly.org/v1beta1` dashboards. Leave it unset, or set an empty list, to convert every legacy
+dashboard. Otherwise set a list of Kubernetes label selectors (`matchLabels` and `matchExpressions`). A dashboard
+matches this list when any selector matches its labels. An empty selector (`{}`) matches every dashboard. A null
+item is invalid. On a cluster-wide watch, a set
+`dashboardNamespaceSelector` has to match as well.
+
+`grafana.converter.dashboardNamespaceSelector` limits that selection by the labels on the dashboard's namespace. The
+converter applies the selector when `watchNamespaces` is empty and `namespaceScope` is false. That setting watches
+every namespace. With `watchNamespaces` set, or with `namespaceScope: true`, selection uses `dashboardLabelSelector`
+alone. Leave the namespace selector unset to skip namespace filtering. An empty selector (`{}`) matches every
+namespace, and the converter does not read Namespace objects for that value. A selector with `matchLabels` or
+`matchExpressions` reads the Namespace. When `grafana.converter.dashboard` is true, the selector is set, including
+`{}`, and the watch includes every namespace, the ClusterRole grants `get`, `list`, and `watch` on `namespaces`.
+`get` covers that Namespace read. `list` and `watch` cover Namespace changes, which requeue the legacy dashboards in
+the changed namespace. A namespaced watch does not add that rule.
+
+When a legacy dashboard stops matching, the converter deletes the converted dashboard labeled
+`app.kubernetes.io/managed-by-operator=grafana-operator-converter`. A converted dashboard without that label stays, and
+the converter logs `Cannot reconcile GrafanaDashboard; waiting for a new event` with
+`target GrafanaDashboard <namespace>/<name> exists without the converter ownership marker`. A later match creates the
+converted dashboard when no converted dashboard is present. A later match leaves a converted dashboard that is still
+present without the label, and logs the same error.
+
+An invalid selector stops the converter before it starts watching. The error begins with
+`invalid dashboardLabelSelector[` or `invalid dashboardNamespaceSelector:`.
+
 ## Configuration
 
 <!-- markdownlint-disable line-length no-bare-urls table-column-style -->

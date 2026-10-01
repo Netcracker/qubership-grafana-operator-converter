@@ -120,6 +120,18 @@ grafana:
     # -- Delete converted dashboards with their legacy sources by adding Kubernetes owner references
     deleteTargetOnSourceDeletion: false
     dashboard: true
+    # -- Legacy dashboards to convert, as a list of Kubernetes label selectors.
+    # Unset converts every legacy dashboard. A dashboard matches when any one selector matches.
+    # An empty selector matches every dashboard. A null list item is invalid.
+    # On a cluster-wide watch, a set dashboardNamespaceSelector has to match as well.
+    dashboardLabelSelector:
+    # -- Namespace label selector for legacy dashboards. Applied when watchNamespaces is empty and
+    # namespaceScope is false. Unset does not filter by namespace labels. An empty selector matches every
+    # namespace and does not read Namespace objects. A selector with matchLabels or matchExpressions reads the
+    # Namespace. When grafana.converter.dashboard is true and the watch is cluster-wide, the ClusterRole grants
+    # get, list, and watch on namespaces. get covers that Namespace read. list and watch cover Namespace changes,
+    # which requeue the legacy dashboards in the changed namespace.
+    dashboardNamespaceSelector:
     datasource: true
     folder: true
     notification: true
