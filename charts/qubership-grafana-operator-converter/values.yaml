@@ -122,6 +122,7 @@ grafana:
     dashboard: true
     # -- Legacy dashboards to convert, as a list of Kubernetes label selectors.
     # Unset converts every legacy dashboard. A dashboard matches when any one selector matches.
+    # An empty selector matches every dashboard. A null list item is invalid.
     # On a cluster-wide watch, a set dashboardNamespaceSelector has to match as well.
     dashboardLabelSelector:
     # -- Namespace label selector for legacy dashboards. Applied when watchNamespaces is empty and

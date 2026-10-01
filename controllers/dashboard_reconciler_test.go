@@ -417,6 +417,31 @@ func TestDeselectedDashboard(t *testing.T) {
 		assert.Equal(t, target, actual)
 	})
 
+	t.Run("null selector entry leaves a managed target in place", func(t *testing.T) {
+		t.Setenv(WatchNamespaceEnvVar, "product-a")
+		source := testSourceDashboard("sample", "source-uid", "desired")
+		target := testTargetDashboard("sample", "desired")
+		alphaClient := v1alpha1fake.NewSimpleClientset(source)
+		betaClient := v1beta1fake.NewSimpleClientset(target)
+		controller := newDashboardTestController(alphaClient, betaClient)
+		controller.ConverterConf.DashboardLabelSelector = []*metav1.LabelSelector{nil}
+
+		err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+			Namespace: source.Namespace,
+			Name:      source.Name,
+		})
+
+		require.Error(t, err)
+		if !isPermanentDashboardError(err) {
+			t.Errorf("reconcileDashboard(%s) error = %v, want a permanent error", source.Name, err)
+		}
+		actual, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
+			context.Background(), source.Name, metav1.GetOptions{},
+		)
+		require.NoError(t, getErr)
+		assert.Equal(t, target, actual)
+	})
+
 	t.Run("concurrent target deletion is success", func(t *testing.T) {
 		t.Setenv(WatchNamespaceEnvVar, "product-a")
 		source := testSourceDashboard("sample", "source-uid", "desired")

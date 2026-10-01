@@ -54,13 +54,16 @@ func (c *ConverterController) dashboardSelected(ctx context.Context, source *v1a
 }
 
 // dashboardLabelsMatch reports whether objectLabels satisfy any selector.
-// An empty selectors list matches every object. A nil entry matches every
-// object.
+// An empty selectors list matches every object. An empty selector matches
+// every object. A nil selector is invalid.
 func dashboardLabelsMatch(selectors []*metav1.LabelSelector, objectLabels map[string]string) (bool, error) {
 	if len(selectors) == 0 {
 		return true, nil
 	}
-	for _, raw := range selectors {
+	for i, raw := range selectors {
+		if raw == nil {
+			return false, newPermanentDashboardError("invalid dashboardLabelSelector[%d]: selector is null", i)
+		}
 		selector, err := metav1.LabelSelectorAsSelector(raw)
 		if err != nil {
 			return false, newPermanentDashboardError("invalid dashboardLabelSelector: %w", err)

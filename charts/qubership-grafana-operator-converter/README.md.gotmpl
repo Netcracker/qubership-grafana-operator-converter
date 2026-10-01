@@ -28,7 +28,8 @@ deleted.
 `grafana.converter.dashboardLabelSelector` selects which legacy `integreatly.org/v1alpha1` dashboards the converter
 creates as `grafana.integreatly.org/v1beta1` dashboards. Leave it unset, or set an empty list, to convert every legacy
 dashboard. Otherwise set a list of Kubernetes label selectors (`matchLabels` and `matchExpressions`). A dashboard
-matches this list when any selector matches its labels. On a cluster-wide watch, a set
+matches this list when any selector matches its labels. An empty selector (`{}`) matches every dashboard. A null
+item is invalid. On a cluster-wide watch, a set
 `dashboardNamespaceSelector` has to match as well.
 
 `grafana.converter.dashboardNamespaceSelector` limits that selection by the labels on the dashboard's namespace. The

@@ -394,6 +394,19 @@ dashboardNamespaceSelector:
 	}, config.DashboardNamespaceSelector)
 }
 
+func TestReadConfigRejectsNullDashboardLabelSelector(t *testing.T) {
+	path := writeConverterConfig(t, `enable: true
+dashboard: true
+dashboardLabelSelector:
+  - null
+`)
+
+	_, err := ReadConfig(path)
+
+	require.Error(t, err)
+	assert.Regexp(t, "^invalid dashboardLabelSelector", err.Error())
+}
+
 func TestReadConfigRejectsInvalidDashboardLabelSelector(t *testing.T) {
 	path := writeConverterConfig(t, `enable: true
 dashboard: true

@@ -381,7 +381,7 @@ func ReadConfig(path string) (*ConverterConfig, error) {
 	}
 	for i, selector := range converterConfig.DashboardLabelSelector {
 		if selector == nil {
-			continue
+			return &ConverterConfig{}, fmt.Errorf("invalid dashboardLabelSelector[%d]: selector is null", i)
 		}
 		if _, selectorErr := metav1.LabelSelectorAsSelector(selector); selectorErr != nil {
 			return &ConverterConfig{}, fmt.Errorf("invalid dashboardLabelSelector[%d]: %w", i, selectorErr)
