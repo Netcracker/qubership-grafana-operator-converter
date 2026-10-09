@@ -27,7 +27,7 @@ CONVERTER_API_PATH ?= github.com/Netcracker/qubership-grafana-operator-converter
 ## Tool Versions
 CONTROLLER_TOOLS_VERSION ?= v0.20.1
 CODEGENERATOR_VERSION ?= v0.36.0
-GOLANGCI_LINT_VERSION ?= v2.12.1
+GOLANGCI_LINT_VERSION ?= v2.14.0
 
 # Current version of the converter
 VERSION ?= 0.1.0
