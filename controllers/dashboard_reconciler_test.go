@@ -21,7 +21,9 @@ import (
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	kubefake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/util/workqueue"
@@ -205,6 +207,68 @@ func TestPermanentSourceErrorWaitsForSourceChangeAndDoesNotBlockAnotherDashboard
 	assert.Equal(t, int32(2), invalidGets.Load())
 }
 
+func TestDashboardWriteErrorClassification(t *testing.T) {
+	dashboardResource := schema.GroupResource{Group: "grafana.integreatly.org", Resource: "grafanadashboards"}
+	tests := []struct {
+		name              string
+		err               error
+		expectedPermanent bool
+	}{
+		{
+			name:              "invalid",
+			err:               apierrs.NewInvalid(dashboardResource.WithVersion("v1beta1").GroupVersion().WithKind("GrafanaDashboard").GroupKind(), "sample", nil),
+			expectedPermanent: true,
+		},
+		{name: "bad request", err: apierrs.NewBadRequest("malformed dashboard"), expectedPermanent: true},
+		{name: "request entity too large", err: apierrs.NewRequestEntityTooLargeError("limit is 3145728 bytes"), expectedPermanent: true},
+		{name: "server timeout", err: apierrs.NewServerTimeout(dashboardResource, "create", 1)},
+		{name: "connection failure", err: errors.New("connection reset by peer")},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			classified := classifyDashboardWriteError("create target GrafanaDashboard", test.err)
+
+			require.Error(t, classified)
+			assert.Equal(t, test.expectedPermanent, isPermanentDashboardError(classified))
+			assert.Contains(t, classified.Error(), "create target GrafanaDashboard")
+			assert.ErrorIs(t, classified, test.err)
+		})
+	}
+}
+
+func TestOversizedTargetWriteWaitsForSourceChange(t *testing.T) {
+	tests := []struct {
+		name            string
+		existingTargets []runtime.Object
+		rejectedVerb    string
+	}{
+		{name: "create", rejectedVerb: "create"},
+		{
+			name:            "update",
+			existingTargets: []runtime.Object{testTargetDashboard("sample", "stale-content")},
+			rejectedVerb:    "update",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			source := testSourceDashboard("sample", "source-uid", "dashboard-content")
+			betaClient := v1beta1fake.NewSimpleClientset(test.existingTargets...)
+			betaClient.PrependReactor(test.rejectedVerb, "grafanadashboards", func(k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, apierrs.NewRequestEntityTooLargeError("limit is 3145728 bytes")
+			})
+			controller := newDashboardTestController(v1alpha1fake.NewSimpleClientset(source), betaClient)
+
+			err := controller.reconcileDashboard(context.Background(), dashboardQueueItem{Namespace: source.Namespace, Name: source.Name})
+
+			require.Error(t, err)
+			assert.True(t, isPermanentDashboardError(err))
+			assert.Contains(t, err.Error(), test.rejectedVerb+" target GrafanaDashboard")
+		})
+	}
+}
+
 func TestDashboardRetryBackoffIsExponentialAndCapped(t *testing.T) {
 	limiter := newDashboardRateLimiter()
 	item := dashboardQueueItem{Namespace: "product-a", Name: "sample"}
@@ -318,11 +382,13 @@ func newDashboardTestController(
 		workqueue.NewTypedItemExponentialFailureRateLimiter[dashboardQueueItem](time.Millisecond, 5*time.Millisecond),
 	)
 	return &ConverterController{
-		log:               logr.Discard(),
-		v1alpha1clientset: alphaClient,
-		v1beta1clientset:  betaClient,
-		dashboardQueue:    queue,
-		apiTimeout:        time.Second,
+		log:                              logr.Discard(),
+		v1alpha1clientset:                alphaClient,
+		v1beta1clientset:                 betaClient,
+		coreClientset:                    kubefake.NewSimpleClientset(),
+		dashboardQueue:                   queue,
+		apiTimeout:                       time.Second,
+		gzipConfigMapMaxDecompressedSize: defaultGzipConfigMapMaxDecompressedSize,
 	}
 }
 

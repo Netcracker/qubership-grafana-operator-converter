@@ -125,6 +125,17 @@ helm template converter "${chart_dir}" \
 	>"${render_dir}/config-namespace-override.yaml"
 
 grep -q '^  namespace: operators$' "${render_dir}/config-namespace-override.yaml"
+grep -q '^    gzipConfigMapMaxDecompressedSize: 32Mi$' "${render_dir}/config-namespace-override.yaml"
+grep -q '^    resolveGzipConfigMapRef: false$' "${render_dir}/config-namespace-override.yaml"
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/rbac.yaml \
+	--set grafana.converter.resolveGzipConfigMapRef=true \
+	>"${render_dir}/dashboard-gzip-configmap-ref.yaml"
+
+[[ $(grep -c '^      - configmaps$' "${render_dir}/dashboard-gzip-configmap-ref.yaml") -eq 1 ]]
+[[ $(grep -c '^      - configmaps$' "${render_dir}/all-converters-cluster.yaml") -eq 0 ]]
 
 if helm template converter "${chart_dir}" \
 	--namespace monitoring \
