@@ -51,3 +51,7 @@ By default, deleting a legacy dashboard does not delete its converted dashboard.
 `grafana.converter.deleteTargetOnSourceDeletion=true` to add a Kubernetes owner reference to each converted dashboard.
 Kubernetes then deletes the converted dashboard when its legacy source is deleted, even while the converter is not
 running.
+
+The converter deletes a converted dashboard labeled `app.kubernetes.io/managed-by-operator=grafana-operator-converter`
+when its legacy dashboard is not selected. A converted dashboard without that label stays.
+[Dashboard selection](charts/qubership-grafana-operator-converter/README.md#dashboard-selection) states the selectors.

@@ -21,6 +21,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/metadata/metadatainformer"
@@ -43,12 +44,14 @@ var configMapGroupVersionResource = schema.GroupVersionResource{Version: "v1", R
 
 // ConverterConfig defines converter configuration for Grafana v1alpha1 to v1beta1 api versions
 type ConverterConfig struct {
-	Enable                           bool                  `json:"enable,omitempty" yaml:"enable,omitempty"`
-	Strategy                         string                `json:"strategy,omitempty" yaml:"strategy,omitempty"`
-	InstanceSelector                 *metav1.LabelSelector `json:"instanceSelector,omitempty" yaml:"instanceSelector,omitempty"`
-	DeleteTargetOnSourceDeletion     bool                  `json:"deleteTargetOnSourceDeletion,omitempty" yaml:"deleteTargetOnSourceDeletion,omitempty"`
-	ResolveGzipConfigMapRef          bool                  `json:"resolveGzipConfigMapRef,omitempty" yaml:"resolveGzipConfigMapRef,omitempty"`
-	GzipConfigMapMaxDecompressedSize string                `json:"gzipConfigMapMaxDecompressedSize,omitempty" yaml:"gzipConfigMapMaxDecompressedSize,omitempty"`
+	Enable                           bool                    `json:"enable,omitempty" yaml:"enable,omitempty"`
+	Strategy                         string                  `json:"strategy,omitempty" yaml:"strategy,omitempty"`
+	InstanceSelector                 *metav1.LabelSelector   `json:"instanceSelector,omitempty" yaml:"instanceSelector,omitempty"`
+	DashboardLabelSelector           []*metav1.LabelSelector `json:"dashboardLabelSelector,omitempty" yaml:"dashboardLabelSelector,omitempty"`
+	DashboardNamespaceSelector       *metav1.LabelSelector   `json:"dashboardNamespaceSelector,omitempty" yaml:"dashboardNamespaceSelector,omitempty"`
+	DeleteTargetOnSourceDeletion     bool                    `json:"deleteTargetOnSourceDeletion,omitempty" yaml:"deleteTargetOnSourceDeletion,omitempty"`
+	ResolveGzipConfigMapRef          bool                    `json:"resolveGzipConfigMapRef,omitempty" yaml:"resolveGzipConfigMapRef,omitempty"`
+	GzipConfigMapMaxDecompressedSize string                  `json:"gzipConfigMapMaxDecompressedSize,omitempty" yaml:"gzipConfigMapMaxDecompressedSize,omitempty"`
 	EnabledGrafanaConverter          `json:",inline" yaml:",inline"`
 }
 type EnabledGrafanaConverter struct {
@@ -102,12 +105,19 @@ func (f *singleInformerFactory) WaitForCacheSync(stopCh <-chan struct{}) map[ref
 
 // ConverterController watches legacy Grafana resources and reconciles their v1beta1 replacements.
 type ConverterController struct {
-	ctx                              context.Context
-	log                              logr.Logger
-	ConverterConf                    ConverterConfig
-	v1alpha1clientset                v1alpha1clientset.Interface
-	v1beta1clientset                 v1beta1clientset.Interface
-	coreClientset                    kubernetes.Interface
+	ctx               context.Context
+	log               logr.Logger
+	ConverterConf     ConverterConfig
+	v1alpha1clientset v1alpha1clientset.Interface
+	v1beta1clientset  v1beta1clientset.Interface
+	// coreClientset reads ConfigMaps for gzipConfigMapRef content and Namespace
+	// labels for cluster-wide dashboard selection.
+	coreClientset kubernetes.Interface
+	// coreInformerFactory holds the Namespace informer registered when dashboard
+	// conversion is enabled, the watch is cluster-wide, and
+	// DashboardNamespaceSelector is set. Start waits for it with the Grafana
+	// informers. Readiness stays failed until that wait finishes.
+	coreInformerFactory              []scopedInformerFactory
 	v1alpha1InformerFactory          []scopedInformerFactory
 	v1beta1InformerFactory           []scopedInformerFactory
 	configMapInformerFactory         []scopedInformerFactory
@@ -119,7 +129,14 @@ type ConverterController struct {
 	gzipConfigMapMaxDecompressedSize int64
 }
 
-// NewGrafanaConverterController builds the Grafana converter service.
+// NewGrafanaConverterController loads converter configuration and registers
+// informers for each enabled kind.
+//
+// clients.Core is retained for ConfigMap and Namespace reads. The controller
+// registers a Namespace informer when dashboard conversion is enabled, the
+// watch is cluster-wide, and DashboardNamespaceSelector is set. That informer
+// joins startup and readiness synchronization. A nil clients.Core in that case
+// returns an error.
 func NewGrafanaConverterController(ctx context.Context, converterConfigPath string, clients ConverterClients, resyncPeriod time.Duration, log logr.Logger) (*ConverterController, error) {
 	c := &ConverterController{
 		ctx:               ctx,
@@ -153,11 +170,19 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 	if namespaceErr != nil {
 		return nil, fmt.Errorf("invalid watch namespace configuration: %w", namespaceErr)
 	}
+	if c.watchesDashboardNamespaces(namespaces) && c.coreClientset == nil {
+		return nil, fmt.Errorf("cannot watch Namespaces: core client is not configured")
+	}
 	configuredFactories := newV1alpha1InformerFactories(clients.V1alpha1, resyncPeriod, namespaces)
 	if err = c.configureEnabledConverters(configuredFactories, clients, resyncPeriod); err != nil {
 		return nil, err
 	}
 	c.registerV1alpha1InformerFactories(configuredFactories)
+	if c.watchesDashboardNamespaces(namespaces) {
+		if err = c.configureNamespaceInformer(resyncPeriod); err != nil {
+			return nil, err
+		}
+	}
 	c.setReadiness(fmt.Errorf("waiting for informer caches to synchronize: %s", strings.Join(c.informerScopes(), ", ")))
 
 	return c, nil
@@ -165,6 +190,29 @@ func NewGrafanaConverterController(ctx context.Context, converterConfigPath stri
 
 func (c *ConverterController) conversionEnabled() bool {
 	return c.ConverterConf.Enable && c.ConverterConf.EnabledGrafanaConverter != (EnabledGrafanaConverter{})
+}
+
+// watchesDashboardNamespaces reports whether dashboard selection needs the
+// Namespace informer: dashboard conversion is enabled, the watch is
+// cluster-wide, and DashboardNamespaceSelector is set.
+func (c *ConverterController) watchesDashboardNamespaces(namespaces []string) bool {
+	return c.ConverterConf.Dashboard && len(namespaces) == 0 && c.ConverterConf.DashboardNamespaceSelector != nil
+}
+
+func (c *ConverterController) configureNamespaceInformer(resyncPeriod time.Duration) error {
+	coreFactory := informers.NewSharedInformerFactory(c.coreClientset, resyncPeriod)
+	if _, err := coreFactory.Core().V1().Namespaces().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.enqueueDashboardsInNamespace,
+		UpdateFunc: func(_, newObject any) { c.enqueueDashboardsInNamespace(newObject) },
+		DeleteFunc: c.enqueueDashboardsInNamespace,
+	}); err != nil {
+		return fmt.Errorf("cannot add Namespace handler: %w", err)
+	}
+	c.coreInformerFactory = append(c.coreInformerFactory, scopedInformerFactory{
+		scope:   clusterWideScope,
+		factory: coreFactory,
+	})
+	return nil
 }
 
 func newV1alpha1InformerFactories(client v1alpha1clientset.Interface, resyncPeriod time.Duration, namespaces []string) []configuredInformerFactory {
@@ -430,10 +478,11 @@ func (c *ConverterController) informerScopes() []string {
 }
 
 func (c *ConverterController) informerFactories() []scopedInformerFactory {
-	factories := make([]scopedInformerFactory, 0, len(c.v1alpha1InformerFactory)+len(c.v1beta1InformerFactory)+len(c.configMapInformerFactory))
+	factories := make([]scopedInformerFactory, 0, len(c.v1alpha1InformerFactory)+len(c.v1beta1InformerFactory)+len(c.configMapInformerFactory)+len(c.coreInformerFactory))
 	factories = append(factories, c.v1alpha1InformerFactory...)
 	factories = append(factories, c.v1beta1InformerFactory...)
 	factories = append(factories, c.configMapInformerFactory...)
+	factories = append(factories, c.coreInformerFactory...)
 	return factories
 }
 
@@ -480,6 +529,19 @@ func ReadConfig(path string) (*ConverterConfig, error) {
 	if converterConfig.InstanceSelector != nil {
 		if _, selectorErr := metav1.LabelSelectorAsSelector(converterConfig.InstanceSelector); selectorErr != nil {
 			return &ConverterConfig{}, fmt.Errorf("invalid instanceSelector: %w", selectorErr)
+		}
+	}
+	for i, selector := range converterConfig.DashboardLabelSelector {
+		if selector == nil {
+			return &ConverterConfig{}, fmt.Errorf("invalid dashboardLabelSelector[%d]: selector is null", i)
+		}
+		if _, selectorErr := metav1.LabelSelectorAsSelector(selector); selectorErr != nil {
+			return &ConverterConfig{}, fmt.Errorf("invalid dashboardLabelSelector[%d]: %w", i, selectorErr)
+		}
+	}
+	if converterConfig.DashboardNamespaceSelector != nil {
+		if _, selectorErr := metav1.LabelSelectorAsSelector(converterConfig.DashboardNamespaceSelector); selectorErr != nil {
+			return &ConverterConfig{}, fmt.Errorf("invalid dashboardNamespaceSelector: %w", selectorErr)
 		}
 	}
 	if _, sizeErr := parseGzipConfigMapMaxDecompressedSize(converterConfig.GzipConfigMapMaxDecompressedSize); sizeErr != nil {

@@ -17,8 +17,12 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	clientfeatures "k8s.io/client-go/features"
+	clientfeaturestesting "k8s.io/client-go/features/testing"
+	"k8s.io/client-go/kubernetes"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	metadatafake "k8s.io/client-go/metadata/fake"
 )
@@ -66,6 +70,214 @@ func TestNewGrafanaConverterControllerConfiguresInformerScopes(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The core Namespace informer runs only for a cluster-wide watch when
+// DashboardNamespaceSelector is set and dashboard conversion is enabled.
+// An explicit WATCH_NAMESPACE, including a namespace named cluster-wide,
+// does not register it. A nil core client in the cluster-wide case returns
+// an error from the constructor.
+func TestConverterRegistersNamespaceInformerForClusterWideSelection(t *testing.T) {
+	// The copied Grafana fake clients do not opt out of watch-list semantics, so
+	// an informer started over them waits for a bookmark the fake never sends.
+	clientfeaturestesting.SetFeatureDuringTest(t, clientfeatures.WatchListClient, false)
+
+	const selectorConfig = `enable: true
+dashboard: true
+dashboardNamespaceSelector:
+  matchLabels:
+    tenant: platform
+`
+	const emptySelectorConfig = `enable: true
+dashboard: true
+dashboardNamespaceSelector: {}
+`
+	const datasourceConfig = `enable: true
+datasource: true
+dashboardNamespaceSelector:
+  matchLabels:
+    tenant: platform
+`
+
+	tests := []struct {
+		name                  string
+		watchNamespace        string
+		config                string
+		nilClient             bool
+		wantNamespaceInformer bool
+		wantClientErr         bool
+	}{
+		{
+			name:                  "cluster-wide watch with a namespace selector",
+			config:                selectorConfig,
+			wantNamespaceInformer: true,
+		},
+		{
+			name:                  "cluster-wide watch with an empty namespace selector",
+			config:                emptySelectorConfig,
+			wantNamespaceInformer: true,
+		},
+		{
+			name:   "cluster-wide watch without a namespace selector",
+			config: "enable: true\ndashboard: true\n",
+		},
+		{
+			name:           "explicit namespace with a namespace selector",
+			watchNamespace: "monitoring",
+			config:         selectorConfig,
+		},
+		{
+			name:           "namespace named cluster-wide with a namespace selector",
+			watchNamespace: clusterWideScope,
+			config:         selectorConfig,
+		},
+		{
+			name:   "cluster-wide watch without dashboard conversion",
+			config: datasourceConfig,
+		},
+		{
+			name:          "cluster-wide watch with a namespace selector and no core client",
+			config:        selectorConfig,
+			nilClient:     true,
+			wantClientErr: true,
+		},
+		{
+			name:      "cluster-wide datasource conversion with a namespace selector and no core client",
+			config:    datasourceConfig,
+			nilClient: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(WatchNamespaceEnvVar, test.watchNamespace)
+			var kubeClient kubernetes.Interface
+			if !test.nilClient {
+				kubeClient = kubefake.NewSimpleClientset(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+					Name:   "product-a",
+					Labels: map[string]string{"tenant": "platform"},
+				}})
+			}
+
+			controller, err := NewGrafanaConverterController(
+				context.Background(),
+				writeConverterConfig(t, test.config),
+				ConverterClients{
+					V1alpha1: v1alpha1fake.NewSimpleClientset(),
+					V1beta1:  v1beta1fake.NewSimpleClientset(),
+					Core:     kubeClient,
+				},
+				0,
+				logr.Discard(),
+			)
+
+			if test.wantClientErr {
+				require.ErrorContains(t, err, "core client is not configured")
+				return
+			}
+			require.NoError(t, err)
+			if controller.dashboardQueue != nil {
+				t.Cleanup(controller.dashboardQueue.ShutDown)
+			}
+			assert.Equal(t, kubeClient, controller.coreClientset)
+			assert.Equal(t, test.wantNamespaceInformer, namespaceInformerSynced(t, controller), test.name)
+			if !test.wantNamespaceInformer {
+				if controller.dashboardQueue != nil {
+					assert.Zero(t, controller.dashboardQueue.Len(), "queued Namespace work items")
+				}
+				return
+			}
+			require.Eventually(t, func() bool {
+				return controller.dashboardQueue.Len() == 1
+			}, time.Second, 10*time.Millisecond, "enqueueDashboardsInNamespace(product-a)")
+			assert.Equal(t, []dashboardQueueItem{{Namespace: "product-a"}}, queuedDashboardItems(controller))
+		})
+	}
+}
+
+func namespaceInformerSynced(t *testing.T, controller *ConverterController) bool {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	t.Cleanup(cancel)
+	for _, scopedFactory := range controller.informerFactories() {
+		scopedFactory.factory.Start(ctx.Done())
+	}
+	namespaceType := reflect.TypeOf(&corev1.Namespace{})
+	for _, scopedFactory := range controller.informerFactories() {
+		for informerType, synced := range scopedFactory.factory.WaitForCacheSync(ctx.Done()) {
+			if informerType == namespaceType && synced {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func TestNamespaceInformerUpdateEnqueuesDashboardsInThatNamespace(t *testing.T) {
+	controller, kubeClient := startClusterWideNamespaceInformer(t)
+	namespace, err := kubeClient.CoreV1().Namespaces().Get(context.Background(), "product-a", metav1.GetOptions{})
+	require.NoError(t, err)
+	namespace.Labels["tenant"] = "other"
+	_, err = kubeClient.CoreV1().Namespaces().Update(context.Background(), namespace, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
+	assertProductADashboardsQueued(t, controller)
+}
+
+func TestNamespaceInformerDeleteEnqueuesDashboardsInThatNamespace(t *testing.T) {
+	controller, kubeClient := startClusterWideNamespaceInformer(t)
+
+	require.NoError(t, kubeClient.CoreV1().Namespaces().Delete(context.Background(), "product-a", metav1.DeleteOptions{}))
+
+	assertProductADashboardsQueued(t, controller)
+}
+
+func startClusterWideNamespaceInformer(t *testing.T) (*ConverterController, *kubefake.Clientset) {
+	t.Helper()
+	clientfeaturestesting.SetFeatureDuringTest(t, clientfeatures.WatchListClient, false)
+	t.Setenv(WatchNamespaceEnvVar, "")
+	selected := testSourceDashboard("selected", "selected-uid", "desired")
+	alsoSelected := testSourceDashboard("also-selected", "also-selected-uid", "desired")
+	other := testSourceDashboard("other", "other-uid", "desired")
+	other.Namespace = "product-b"
+	kubeClient := kubefake.NewSimpleClientset(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+		Name:   "product-a",
+		Labels: map[string]string{"tenant": "platform"},
+	}})
+	controller, err := NewGrafanaConverterController(
+		context.Background(),
+		writeConverterConfig(t, `enable: true
+dashboard: true
+dashboardNamespaceSelector:
+  matchLabels:
+    tenant: platform
+`),
+		ConverterClients{
+			V1alpha1: v1alpha1fake.NewSimpleClientset(selected, alsoSelected, other),
+			V1beta1:  v1beta1fake.NewSimpleClientset(),
+			Core:     kubeClient,
+		},
+		0,
+		logr.Discard(),
+	)
+	require.NoError(t, err)
+	t.Cleanup(controller.dashboardQueue.ShutDown)
+	require.True(t, namespaceInformerSynced(t, controller))
+	queuedDashboardItems(controller)
+	return controller, kubeClient
+}
+
+func assertProductADashboardsQueued(t *testing.T, controller *ConverterController) {
+	t.Helper()
+	want := []dashboardQueueItem{
+		{Namespace: "product-a", Name: "also-selected"},
+		{Namespace: "product-a", Name: "selected"},
+	}
+	require.Eventually(t, func() bool {
+		return controller.dashboardQueue.Len() == 1
+	}, time.Second, 10*time.Millisecond, "enqueueDashboardsInNamespace(product-a)")
+	require.True(t, processQueuedNamespace(t, controller, "product-a"))
+	assert.Equal(t, want, queuedDashboardItems(controller))
 }
 
 func TestNamespaceNamedClusterWideStaysNamespaceScoped(t *testing.T) {
@@ -256,6 +468,74 @@ func TestReadConfigRejectsEnabledConfigWithoutConverters(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "at least one converter")
+}
+
+func TestReadConfigKeepsDashboardSelectors(t *testing.T) {
+	path := writeConverterConfig(t, `enable: true
+dashboard: true
+instanceSelector:
+  matchLabels:
+    app.kubernetes.io/component: grafana
+dashboardLabelSelector:
+  - matchLabels:
+      dashboards: platform
+dashboardNamespaceSelector:
+  matchLabels:
+    tenant: platform
+`)
+
+	config, err := ReadConfig(path)
+
+	require.NoError(t, err)
+	assert.Equal(t, []*metav1.LabelSelector{{
+		MatchLabels: map[string]string{"dashboards": "platform"},
+	}}, config.DashboardLabelSelector)
+	assert.Equal(t, &metav1.LabelSelector{
+		MatchLabels: map[string]string{"tenant": "platform"},
+	}, config.DashboardNamespaceSelector)
+}
+
+func TestReadConfigRejectsNullDashboardLabelSelector(t *testing.T) {
+	path := writeConverterConfig(t, `enable: true
+dashboard: true
+dashboardLabelSelector:
+  - null
+`)
+
+	_, err := ReadConfig(path)
+
+	require.Error(t, err)
+	assert.Regexp(t, "^invalid dashboardLabelSelector", err.Error())
+}
+
+func TestReadConfigRejectsInvalidDashboardLabelSelector(t *testing.T) {
+	path := writeConverterConfig(t, `enable: true
+dashboard: true
+dashboardLabelSelector:
+  - matchExpressions:
+      - key: dashboards
+        operator: Invalid
+`)
+
+	_, err := ReadConfig(path)
+
+	require.Error(t, err)
+	assert.Regexp(t, "^invalid dashboardLabelSelector", err.Error())
+}
+
+func TestReadConfigRejectsInvalidDashboardNamespaceSelector(t *testing.T) {
+	path := writeConverterConfig(t, `enable: true
+dashboard: true
+dashboardNamespaceSelector:
+  matchExpressions:
+    - key: tenant
+      operator: Invalid
+`)
+
+	_, err := ReadConfig(path)
+
+	require.Error(t, err)
+	assert.Regexp(t, "^invalid dashboardNamespaceSelector", err.Error())
 }
 
 func TestReadConfigRejectsInvalidInstanceSelector(t *testing.T) {
