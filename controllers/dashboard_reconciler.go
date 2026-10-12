@@ -25,6 +25,8 @@ const gzipConfigMapReferenceIndex = "gzipConfigMapReference"
 
 var errGzipDashboardSizeLimitExceeded = errors.New("decompressed dashboard exceeds the configured size limit")
 
+// dashboardQueueItem identifies one legacy GrafanaDashboard.
+// An empty Name lists every legacy dashboard in Namespace and enqueues each one.
 type dashboardQueueItem struct {
 	Namespace string
 	Name      string
@@ -173,7 +175,11 @@ func (c *ConverterController) processNextDashboard(ctx context.Context) bool {
 		return true
 	}
 
-	logger.Error(err, "Cannot reconcile GrafanaDashboard; retrying with backoff", "retry", c.dashboardQueue.NumRequeues(item)+1)
+	if item.Name == "" {
+		c.log.Error(err, "Cannot list GrafanaDashboards for Namespace; retrying with backoff", "namespace", item.Namespace, "retry", c.dashboardQueue.NumRequeues(item)+1)
+	} else {
+		logger.Error(err, "Cannot reconcile GrafanaDashboard; retrying with backoff", "retry", c.dashboardQueue.NumRequeues(item)+1)
+	}
 	c.dashboardQueue.AddRateLimited(item)
 	return true
 }
@@ -181,6 +187,9 @@ func (c *ConverterController) processNextDashboard(ctx context.Context) bool {
 func (c *ConverterController) reconcileDashboardWithTimeout(ctx context.Context, item dashboardQueueItem) error {
 	reconcileContext, cancel := context.WithTimeout(ctx, c.apiTimeout)
 	defer cancel()
+	if item.Name == "" {
+		return c.enqueueListedDashboards(reconcileContext, item.Namespace)
+	}
 	return c.reconcileDashboard(reconcileContext, item)
 }
 
@@ -194,6 +203,14 @@ func (c *ConverterController) reconcileDashboard(ctx context.Context, item dashb
 	}
 	if !source.DeletionTimestamp.IsZero() {
 		return nil
+	}
+
+	selected, err := c.dashboardSelected(ctx, source)
+	if err != nil {
+		return err
+	}
+	if !selected {
+		return c.deleteManagedDashboardTarget(ctx, source.Namespace, source.Name)
 	}
 
 	desired := c.convertGrafanaDashboard(source)
