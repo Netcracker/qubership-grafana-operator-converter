@@ -3,11 +3,14 @@ package controllers
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"sort"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	v1alpha1clientset "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned"
 	v1alpha1fake "github.com/Netcracker/qubership-grafana-operator-converter/api/client/v1alpha1/clientset/versioned/fake"
 	"github.com/Netcracker/qubership-grafana-operator-converter/api/operator/v1alpha1"
 	"github.com/go-logr/logr"
@@ -17,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kubefake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 )
@@ -200,8 +204,9 @@ func TestDashboardSelected(t *testing.T) {
 	}
 }
 
-// A Namespace event enqueues every legacy dashboard in that namespace.
-// A DeletedFinalStateUnknown tombstone carries the same Namespace.
+// A Namespace event queues the namespace, and a worker then enqueues every
+// legacy dashboard in it. A DeletedFinalStateUnknown tombstone carries the same
+// Namespace.
 func TestNamespaceEventEnqueuesDashboardsInThatNamespace(t *testing.T) {
 	selected := testSourceDashboard("selected", "selected-uid", "desired")
 	alsoSelected := testSourceDashboard("also-selected", "also-selected-uid", "desired")
@@ -225,6 +230,7 @@ func TestNamespaceEventEnqueuesDashboardsInThatNamespace(t *testing.T) {
 
 			controller.enqueueDashboardsInNamespace(test.object)
 
+			require.True(t, processQueuedNamespace(t, controller, "product-a"))
 			assert.Equal(t, []dashboardQueueItem{
 				{Namespace: "product-a", Name: "also-selected"},
 				{Namespace: "product-a", Name: "selected"},
@@ -261,6 +267,7 @@ func TestNamespaceEventWithNoDashboardsEnqueuesNothing(t *testing.T) {
 
 	controller.enqueueDashboardsInNamespace(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "product-a"}})
 
+	require.True(t, processQueuedNamespace(t, controller, "product-a"))
 	assert.Empty(t, queuedDashboardItems(controller))
 }
 
@@ -285,9 +292,80 @@ func TestNamespaceListFailureRetriesAndThenEnqueuesDashboards(t *testing.T) {
 
 	controller.enqueueDashboardsInNamespace(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: selected.Namespace}})
 
-	require.Equal(t, 1, controller.dashboardQueue.Len(), "enqueueDashboardsInNamespace(product-a)")
-	require.True(t, controller.processNextDashboard(context.Background()))
+	require.True(t, processQueuedNamespace(t, controller, "product-a"))
+	require.Eventually(t, func() bool {
+		return controller.dashboardQueue.Len() == 1
+	}, time.Second, time.Millisecond, "retry of the failed list")
+	require.True(t, processQueuedNamespace(t, controller, "product-a"))
 	assert.Equal(t, []dashboardQueueItem{{Namespace: "product-a", Name: "selected"}}, queuedDashboardItems(controller))
+	assert.Equal(t, int32(2), lists.Load())
+}
+
+// The informer delivers Namespace events to the handler one at a time, so the
+// handler must return without waiting for the dashboard list.
+func TestNamespaceEventDoesNotWaitForStalledDashboardList(t *testing.T) {
+	var lists atomic.Int32
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		lists.Add(1)
+		select {
+		case <-release:
+		case <-request.Context().Done():
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Cleanup(func() { close(release) })
+	alphaClient, err := v1alpha1clientset.NewForConfig(&rest.Config{Host: server.URL})
+	require.NoError(t, err)
+	controller := &ConverterController{
+		ctx:               context.Background(),
+		log:               logr.Discard(),
+		v1alpha1clientset: alphaClient,
+		dashboardQueue:    newDashboardQueue(),
+		apiTimeout:        50 * time.Millisecond,
+	}
+	t.Cleanup(controller.dashboardQueue.ShutDown)
+
+	handled := make(chan struct{})
+	go func() {
+		defer close(handled)
+		controller.enqueueDashboardsInNamespace(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "product-a"}})
+	}()
+	select {
+	case <-handled:
+	case <-time.After(time.Second):
+		t.Fatal("enqueueDashboardsInNamespace(product-a) did not return")
+	}
+	assert.Zero(t, lists.Load(), "list requests sent by the Namespace handler")
+
+	processed := make(chan struct{})
+	go func() {
+		defer close(processed)
+		controller.processNextDashboard(context.Background())
+	}()
+	select {
+	case <-processed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("processNextDashboard did not stop the stalled list at apiTimeout")
+	}
+	require.Eventually(t, func() bool {
+		return controller.dashboardQueue.Len() == 1
+	}, time.Second, time.Millisecond, "retry of the stalled list")
+	assert.Equal(t, []dashboardQueueItem{{Namespace: "product-a"}}, queuedDashboardItems(controller))
+	assert.Equal(t, int32(1), lists.Load())
+}
+
+// processQueuedNamespace asserts that the queue holds only the work item for
+// namespace, then runs it on the calling goroutine as a dashboard worker would.
+func processQueuedNamespace(t *testing.T, controller *ConverterController, namespace string) bool {
+	t.Helper()
+	require.Equal(t, 1, controller.dashboardQueue.Len(), "queued Namespace work items")
+	item, shutdown := controller.dashboardQueue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, dashboardQueueItem{Namespace: namespace}, item)
+	controller.dashboardQueue.Done(item)
+	controller.dashboardQueue.Add(item)
+	return controller.processNextDashboard(context.Background())
 }
 
 func newNamespaceEventController(t *testing.T, dashboards ...*v1alpha1.GrafanaDashboard) *ConverterController {
@@ -301,6 +379,7 @@ func newNamespaceEventController(t *testing.T, dashboards ...*v1alpha1.GrafanaDa
 		log:               logr.Discard(),
 		v1alpha1clientset: v1alpha1fake.NewSimpleClientset(objects...),
 		dashboardQueue:    newDashboardQueue(),
+		apiTimeout:        time.Second,
 	}
 	t.Cleanup(controller.dashboardQueue.ShutDown)
 	return controller

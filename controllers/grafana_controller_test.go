@@ -151,7 +151,6 @@ dashboardNamespaceSelector:
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv(WatchNamespaceEnvVar, test.watchNamespace)
-			alphaClient := v1alpha1fake.NewSimpleClientset()
 			var kubeClient kubernetes.Interface
 			if !test.nilClient {
 				kubeClient = kubefake.NewSimpleClientset(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
@@ -164,7 +163,7 @@ dashboardNamespaceSelector:
 				context.Background(),
 				writeConverterConfig(t, test.config),
 				ConverterClients{
-					V1alpha1: alphaClient,
+					V1alpha1: v1alpha1fake.NewSimpleClientset(),
 					V1beta1:  v1beta1fake.NewSimpleClientset(),
 					Core:     kubeClient,
 				},
@@ -182,8 +181,16 @@ dashboardNamespaceSelector:
 			}
 			assert.Equal(t, kubeClient, controller.coreClientset)
 			assert.Equal(t, test.wantNamespaceInformer, namespaceInformerSynced(t, controller), test.name)
-			assert.Equal(t, test.wantNamespaceInformer, listedDashboardsInNamespace(alphaClient, "product-a"),
-				"list GrafanaDashboards in product-a")
+			if !test.wantNamespaceInformer {
+				if controller.dashboardQueue != nil {
+					assert.Zero(t, controller.dashboardQueue.Len(), "queued Namespace work items")
+				}
+				return
+			}
+			require.Eventually(t, func() bool {
+				return controller.dashboardQueue.Len() == 1
+			}, time.Second, 10*time.Millisecond, "enqueueDashboardsInNamespace(product-a)")
+			assert.Equal(t, []dashboardQueueItem{{Namespace: "product-a"}}, queuedDashboardItems(controller))
 		})
 	}
 }
@@ -201,15 +208,6 @@ func namespaceInformerSynced(t *testing.T, controller *ConverterController) bool
 			if informerType == namespaceType && synced {
 				return true
 			}
-		}
-	}
-	return false
-}
-
-func listedDashboardsInNamespace(client *v1alpha1fake.Clientset, namespace string) bool {
-	for _, action := range client.Actions() {
-		if action.GetVerb() == "list" && action.GetResource().Resource == "grafanadashboards" && action.GetNamespace() == namespace {
-			return true
 		}
 	}
 	return false
@@ -276,8 +274,9 @@ func assertProductADashboardsQueued(t *testing.T, controller *ConverterControlle
 		{Namespace: "product-a", Name: "selected"},
 	}
 	require.Eventually(t, func() bool {
-		return controller.dashboardQueue.Len() >= len(want)
+		return controller.dashboardQueue.Len() == 1
 	}, time.Second, 10*time.Millisecond, "enqueueDashboardsInNamespace(product-a)")
+	require.True(t, processQueuedNamespace(t, controller, "product-a"))
 	assert.Equal(t, want, queuedDashboardItems(controller))
 }
 

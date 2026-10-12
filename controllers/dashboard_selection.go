@@ -75,21 +75,21 @@ func dashboardLabelsMatch(selectors []*metav1.LabelSelector, objectLabels map[st
 	return false, nil
 }
 
-// enqueueDashboardsInNamespace lists legacy GrafanaDashboards in the Namespace
-// carried by object and enqueues each one. object is a *corev1.Namespace, or a
-// [cache.DeletedFinalStateUnknown] whose object is a Namespace. An unexpected
-// object is logged and not queued. A list error is logged and retried, because
-// the Namespace informer does not repeat the event while resync is disabled.
+// enqueueDashboardsInNamespace queues the Namespace carried by object so a
+// dashboard worker lists its legacy GrafanaDashboards. object is a
+// *corev1.Namespace, or a [cache.DeletedFinalStateUnknown] whose object is a
+// Namespace. An unexpected object is logged and not queued.
+//
+// The list runs on the worker, under apiTimeout and with backoff. The informer
+// delivers Namespace events to this handler one at a time, so a list that
+// stalls here would hold back every later Namespace event.
 func (c *ConverterController) enqueueDashboardsInNamespace(object any) {
 	namespace, ok := namespaceFromEvent(object)
 	if !ok {
 		c.log.Error(fmt.Errorf("received %T", object), "Cannot enqueue GrafanaDashboards for Namespace: unexpected object type")
 		return
 	}
-	if err := c.enqueueListedDashboards(c.ctx, namespace.Name); err != nil {
-		c.log.Error(err, "Cannot list GrafanaDashboards for Namespace", "namespace", namespace.Name)
-		c.dashboardQueue.Add(dashboardQueueItem{Namespace: namespace.Name})
-	}
+	c.dashboardQueue.Add(dashboardQueueItem{Namespace: namespace.Name})
 }
 
 // enqueueListedDashboards lists legacy GrafanaDashboards in namespace and
