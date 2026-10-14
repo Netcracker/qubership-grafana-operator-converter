@@ -30,7 +30,7 @@ ARG LIBRETLS_VERSION=3.8.1-r0
 # renovate: datasource=repology depName=alpine_3_24/openssl versioning=apk syncWith=alpine
 ARG OPENSSL_VERSION=3.5.9-r0
 # renovate: datasource=repology depName=alpine_3_24/zlib versioning=apk syncWith=alpine
-ARG ZLIB_VERSION=1.3.2-r0
+ARG ZLIB_VERSION=1.3.2-r1
 
 RUN apk add --no-cache --upgrade \
         busybox="${BUSYBOX_VERSION}" \
