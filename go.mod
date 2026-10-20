@@ -2,7 +2,7 @@ module github.com/Netcracker/qubership-grafana-operator-converter
 
 go 1.26.0
 
-toolchain go1.27.2
+toolchain go1.27.3
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
