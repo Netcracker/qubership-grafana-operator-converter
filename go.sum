@@ -87,8 +87,8 @@ github.com/google/pprof v0.0.0-20250820193118-f64d9cf942d6 h1:EEHtgt9IwisQ2AZ4pI
 github.com/google/pprof v0.0.0-20250820193118-f64d9cf942d6/go.mod h1:I6V7YzU0XDpsHqbsyrghnFZLO1gwK6NPTNvmetQIk9U=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/grafana/grafana-openapi-client-go v0.0.0-20260828183528-15d99ca95e47 h1:fYFVMTw5l5rfCicakur9xLsYPAv9VfzMiPXCskHvjhE=
-github.com/grafana/grafana-openapi-client-go v0.0.0-20260828183528-15d99ca95e47/go.mod h1:B8oGvuuigU4O3RLlioMZlE+lwTGsCbVsk2dKGCyGZFs=
+github.com/grafana/grafana-openapi-client-go v0.0.0-20261015192556-fcf0a80b71e9 h1:Syibw2nqTKqFFH+A0uJ0WrgtS1lXz855BCkJ3jRfsW4=
+github.com/grafana/grafana-openapi-client-go v0.0.0-20261015192556-fcf0a80b71e9/go.mod h1:PXtva3h2Xdf1uzsYtF5QP+ln8/VjBKRLVZCVhMFlsQE=
 github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
 github.com/json-iterator/go v1.1.12/go.mod h1:e30LSqwooZae/UwlEbR2852Gd8hjQvJoHmT4TnhNGBo=
 github.com/klauspost/compress v1.19.0 h1:sXLILfc9jV2QYWkzFOPWStmcUVH2RHEB1JCdY2oVvCQ=
