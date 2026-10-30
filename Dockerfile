@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" GO111MODULE=on \
     go build -a -o converter main.go
 
 # Use alpine as minimal base image to package the converter binary
-FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 
 # renovate: datasource=repology depName=alpine_3_24/busybox versioning=apk syncWith=alpine
 ARG BUSYBOX_VERSION=1.37.0-r31
