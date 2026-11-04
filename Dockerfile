@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine3.24@sha256:af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine3.24@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS builder
 ARG BUILDPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
@@ -21,16 +21,16 @@ RUN CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" GO111MODULE=on \
     go build -a -o converter main.go
 
 # Use alpine as minimal base image to package the converter binary
-FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 
 # renovate: datasource=repology depName=alpine_3_24/busybox versioning=apk syncWith=alpine
 ARG BUSYBOX_VERSION=1.37.0-r31
 # renovate: datasource=repology depName=alpine_3_24/libretls versioning=apk syncWith=alpine
 ARG LIBRETLS_VERSION=3.8.1-r0
 # renovate: datasource=repology depName=alpine_3_24/openssl versioning=apk syncWith=alpine
-ARG OPENSSL_VERSION=3.5.7-r0
+ARG OPENSSL_VERSION=3.5.9-r0
 # renovate: datasource=repology depName=alpine_3_24/zlib versioning=apk syncWith=alpine
-ARG ZLIB_VERSION=1.3.2-r0
+ARG ZLIB_VERSION=1.3.2-r1
 
 RUN apk add --no-cache --upgrade \
         busybox="${BUSYBOX_VERSION}" \

@@ -5,4 +5,4 @@ on:
 
 jobs:
   check-license:
-    uses: Netcracker/qubership-workflow-hub/.github/workflows/go-check-license.yaml@27fd7674286e5f561a6fd8277f2f389ff96ddb9e # v2.6.0
+    uses: Netcracker/qubership-workflow-hub/.github/workflows/go-check-license.yaml@e6afd0a6bcc4f24d73e3e4d5fb9a31ada009e3f1 # v2.8.2

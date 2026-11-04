@@ -20,12 +20,23 @@ metadata:
     {{- toYaml . | nindent 4 }}
     {{- end }}
 rules:
+  {{- if and $.Values.grafana.converter.dashboard $.Values.grafana.converter.resolveGzipConfigMapRef }}
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+  {{- end }}
   {{- if $.Values.grafana.converter.dashboard }}
   - apiGroups:
       - integreatly.org
     resources:
       - grafanadashboards
     verbs:
+      - get
       - list
       - watch
   - apiGroups:
@@ -34,8 +45,21 @@ rules:
       - grafanadashboards
     verbs:
       - create
+      - delete
       - get
+      - list
       - update
+      - watch
+  {{- if and (not $namespaceScoped) (kindIs "map" $.Values.grafana.converter.dashboardNamespaceSelector) }}
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  {{- end }}
   {{- end }}
   {{- if $.Values.grafana.converter.datasource }}
   - apiGroups:

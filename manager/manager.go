@@ -17,7 +17,9 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
@@ -158,12 +160,34 @@ func RunManager(ctx context.Context) (err error) {
 		setupLog.Error(err, "Error building v1beta1 clientset")
 		return err
 	}
+	coreClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		setupLog.Error(err, "Error building Kubernetes core clientset")
+		return err
+	}
+	metadataClient, err := metadata.NewForConfig(cfg)
+	if err != nil {
+		setupLog.Error(err, "Error building Kubernetes metadata client")
+		return err
+	}
 
-	converterController, err := converterController.NewGrafanaConverterController(ctx, *converterConfigPath, v1alpha1Client, v1beta1Client, *resyncPeriod, ctrl.Log.WithName("ConverterController"))
+	converter, err := converterController.NewGrafanaConverterController(
+		ctx,
+		*converterConfigPath,
+		converterController.ConverterClients{
+			V1alpha1: v1alpha1Client,
+			V1beta1:  v1beta1Client,
+			Core:     coreClient,
+			Metadata: metadataClient,
+		},
+		*resyncPeriod,
+		ctrl.Log.WithName("ConverterController"),
+	)
 	if err != nil {
 		setupLog.Error(err, "cannot setup grafana CRD converter")
-	} else if converterController.ConverterConf.Enable {
-		if err = mgr.Add(converterController); err != nil {
+		return err
+	} else if converter.ConverterConf.Enable {
+		if err = mgr.Add(converter); err != nil {
 			setupLog.Error(err, "cannot add runnable")
 			return err
 		}
@@ -176,6 +200,12 @@ func RunManager(ctx context.Context) (err error) {
 	if err = mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		return err
+	}
+	if converter.ConverterConf.Enable {
+		if err = mgr.AddReadyzCheck("grafana-converter", converter.ReadinessCheck); err != nil {
+			setupLog.Error(err, "unable to set up grafana converter readiness check")
+			return err
+		}
 	}
 
 	setupLog.Info("starting manager")

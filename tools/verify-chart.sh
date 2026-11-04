@@ -74,6 +74,22 @@ grep -q '^              value: "product-a,product-b"$' \
 
 helm template converter "${chart_dir}" \
 	--namespace monitoring \
+	--show-only templates/deployment.yaml \
+	--set grafana.converter.deleteTargetOnSourceDeletion=false \
+	>"${render_dir}/deployment-preserve-targets.yaml"
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/deployment.yaml \
+	--set grafana.converter.deleteTargetOnSourceDeletion=true \
+	>"${render_dir}/deployment-delete-targets.yaml"
+
+preserve_checksum=$(grep 'checksum/grafana-resources-config:' "${render_dir}/deployment-preserve-targets.yaml")
+delete_checksum=$(grep 'checksum/grafana-resources-config:' "${render_dir}/deployment-delete-targets.yaml")
+[[ "${preserve_checksum}" != "${delete_checksum}" ]]
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
 	--show-only templates/rbac.yaml \
 	--set leaderElect=true \
 	--set grafana.converter.datasource=false \
@@ -109,6 +125,17 @@ helm template converter "${chart_dir}" \
 	>"${render_dir}/config-namespace-override.yaml"
 
 grep -q '^  namespace: operators$' "${render_dir}/config-namespace-override.yaml"
+grep -q '^    gzipConfigMapMaxDecompressedSize: 32Mi$' "${render_dir}/config-namespace-override.yaml"
+grep -q '^    resolveGzipConfigMapRef: false$' "${render_dir}/config-namespace-override.yaml"
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/rbac.yaml \
+	--set grafana.converter.resolveGzipConfigMapRef=true \
+	>"${render_dir}/dashboard-gzip-configmap-ref.yaml"
+
+[[ $(grep -c '^      - configmaps$' "${render_dir}/dashboard-gzip-configmap-ref.yaml") -eq 1 ]]
+[[ $(grep -c '^      - configmaps$' "${render_dir}/all-converters-cluster.yaml") -eq 0 ]]
 
 if helm template converter "${chart_dir}" \
 	--namespace monitoring \
@@ -177,3 +204,119 @@ disabled_render="${render_dir}/converter-disabled.yaml"
 [[ $(grep -c '^kind: RoleBinding$' "${disabled_render}") -eq 0 ]]
 [[ $(grep -c '^kind: ClusterRole$' "${disabled_render}") -eq 0 ]]
 [[ $(grep -c '^kind: ClusterRoleBinding$' "${disabled_render}") -eq 0 ]]
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/deployment.yaml \
+	--set leaderElect=true \
+	>"${render_dir}/deployment-leader-election.yaml"
+
+grep -A1 '^  strategy:$' "${render_dir}/deployment-leader-election.yaml" |
+	grep -q '^    type: Recreate$'
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/deployment.yaml \
+	>"${render_dir}/deployment-default-config.yaml"
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/deployment.yaml \
+	--set grafana.converter.dashboard=false \
+	>"${render_dir}/deployment-changed-config.yaml"
+
+default_config_checksum=$(awk '$1 == "checksum/grafana-resources-config:" { print $2 }' \
+	"${render_dir}/deployment-default-config.yaml")
+changed_config_checksum=$(awk '$1 == "checksum/grafana-resources-config:" { print $2 }' \
+	"${render_dir}/deployment-changed-config.yaml")
+
+[[ -n "${default_config_checksum}" ]]
+[[ -n "${changed_config_checksum}" ]]
+[[ "${default_config_checksum}" != "${changed_config_checksum}" ]]
+
+selector_values="${expected_dir}/dashboard-selectors-values.yaml"
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/rbac.yaml \
+	--values "${selector_values}" \
+	>"${render_dir}/dashboard-selectors-cluster.yaml"
+
+diff -u \
+	"${expected_dir}/dashboard-selectors-cluster.golden.yaml" \
+	"${render_dir}/dashboard-selectors-cluster.yaml"
+
+namespace_verbs=$(awk '
+	$0 == "      - namespaces" { capture = 1; next }
+	capture && $0 == "    verbs:" { in_verbs = 1; next }
+	in_verbs && $0 ~ /^      - / { print substr($0, 9); next }
+	in_verbs { exit }
+' "${render_dir}/dashboard-selectors-cluster.yaml")
+[[ "${namespace_verbs}" == $'get\nlist\nwatch' ]]
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/rbac.yaml \
+	--values "${expected_dir}/dashboard-namespace-selector-empty.yaml" \
+	>"${render_dir}/dashboard-namespace-selector-empty.yaml"
+
+diff -u \
+	"${expected_dir}/dashboard-selectors-cluster.golden.yaml" \
+	"${render_dir}/dashboard-namespace-selector-empty.yaml"
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/grafana-resources-configmap.yaml \
+	--values "${expected_dir}/dashboard-namespace-selector-empty.yaml" \
+	>"${render_dir}/dashboard-namespace-selector-empty-config.yaml"
+
+grep -q '^    dashboardNamespaceSelector: {}$' \
+	"${render_dir}/dashboard-namespace-selector-empty-config.yaml"
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/grafana-resources-configmap.yaml \
+	--values "${selector_values}" \
+	>"${render_dir}/dashboard-selectors-config.yaml"
+
+selector_config="${render_dir}/dashboard-selectors-config.yaml"
+grep -q '^    dashboardLabelSelector:$' "${selector_config}"
+grep -q '^    - matchLabels:$' "${selector_config}"
+grep -q '^        dashboards: platform$' "${selector_config}"
+grep -q '^    dashboardNamespaceSelector:$' "${selector_config}"
+grep -q '^      matchLabels:$' "${selector_config}"
+grep -q '^        tenant: platform$' "${selector_config}"
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/rbac.yaml \
+	--values "${selector_values}" \
+	--set watchNamespaces=monitoring \
+	>"${render_dir}/dashboard-selectors-namespaced.yaml"
+
+namespaced_render="${render_dir}/dashboard-selectors-namespaced.yaml"
+[[ $(grep -c '^kind: Role$' "${namespaced_render}") -eq 1 ]]
+[[ $(grep -c '^kind: RoleBinding$' "${namespaced_render}") -eq 1 ]]
+[[ $(grep -c '^kind: ClusterRole$' "${namespaced_render}") -eq 0 ]]
+[[ $(grep -c '^      - namespaces$' "${namespaced_render}") -eq 0 ]]
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/rbac.yaml \
+	--values "${selector_values}" \
+	--set namespaceScope=true \
+	>"${render_dir}/dashboard-selectors-namespace-scope.yaml"
+
+namespace_scope_selector_render="${render_dir}/dashboard-selectors-namespace-scope.yaml"
+[[ $(grep -c '^kind: Role$' "${namespace_scope_selector_render}") -eq 1 ]]
+[[ $(grep -c '^kind: ClusterRole$' "${namespace_scope_selector_render}") -eq 0 ]]
+[[ $(grep -c '^      - namespaces$' "${namespace_scope_selector_render}") -eq 0 ]]
+
+helm template converter "${chart_dir}" \
+	--namespace monitoring \
+	--show-only templates/rbac.yaml \
+	--set grafana.converter.dashboard=false \
+	--set grafana.converter.dashboardNamespaceSelector.matchLabels.tenant=platform \
+	>"${render_dir}/dashboard-disabled-namespace-selector.yaml"
+
+[[ $(grep -c '^      - namespaces$' "${render_dir}/dashboard-disabled-namespace-selector.yaml") -eq 0 ]]
