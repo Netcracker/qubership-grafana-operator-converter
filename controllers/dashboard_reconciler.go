@@ -71,7 +71,7 @@ func (c *ConverterController) enqueueTargetDashboard(object any) {
 	if !isConverterManaged(dashboard) {
 		return
 	}
-	c.dashboardQueue.Add(dashboardQueueItem{Namespace: dashboard.Namespace, Name: dashboard.Name})
+	c.dashboardQueue.Add(dashboardQueueItem{Namespace: dashboard.Namespace, Name: sourceDashboardName(dashboard.Name)})
 }
 
 func (c *ConverterController) enqueueUpdatedTargetDashboard(oldObject, newObject any) {
@@ -87,7 +87,7 @@ func (c *ConverterController) enqueueUpdatedTargetDashboard(oldObject, newObject
 	if dashboardDesiredStateEqual(oldDashboard, newDashboard) {
 		return
 	}
-	c.dashboardQueue.Add(dashboardQueueItem{Namespace: newDashboard.Namespace, Name: newDashboard.Name})
+	c.dashboardQueue.Add(dashboardQueueItem{Namespace: newDashboard.Namespace, Name: sourceDashboardName(newDashboard.Name)})
 }
 
 func (c *ConverterController) enqueueDeletedTargetDashboard(object any) {
@@ -210,7 +210,7 @@ func (c *ConverterController) reconcileDashboard(ctx context.Context, item dashb
 		return err
 	}
 	if !selected {
-		return c.deleteManagedDashboardTarget(ctx, source.Namespace, source.Name)
+		return c.deleteManagedDashboardTarget(ctx, source.Namespace, convertedDashboardName(source.Name))
 	}
 
 	desired := c.convertGrafanaDashboard(source)
@@ -222,7 +222,7 @@ func (c *ConverterController) reconcileDashboard(ctx context.Context, item dashb
 	}
 
 	targetClient := c.v1beta1clientset.GrafanaIntegreatlyV1beta1().GrafanaDashboards(item.Namespace)
-	target, err := targetClient.Get(ctx, item.Name, metav1.GetOptions{})
+	target, err := targetClient.Get(ctx, desired.Name, metav1.GetOptions{})
 	if err != nil {
 		if !apierrs.IsNotFound(err) {
 			return fmt.Errorf("get target GrafanaDashboard: %w", err)

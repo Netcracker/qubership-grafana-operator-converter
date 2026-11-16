@@ -34,7 +34,8 @@ To run it converter need:
 1. Deploy both set of CRs, for APIs `integreatly.org/v1alpha1` and `grafana.integreatly.org/v1beta1`
 2. Deploy it in Kubernetes or OpenShift
 3. Install application with old GrafanaDashboard CRs in group `integreatly.org/v1alpha1`
-4. Converted CRs in new group `grafana.integreatly.org/v1beta1` will be created in the same namespace
+4. Converted CRs in new group `grafana.integreatly.org/v1beta1` will be created in the same namespace. A converted
+   dashboard is named `<legacy dashboard name>-converted`
 
 ## Resource ownership
 
@@ -43,6 +44,26 @@ The converter labels every generated resource with
 
 If an unmarked v1beta1 resource already has the target namespace and name, the converter reports a conflict and leaves
 the resource unchanged. This prevents the converter from adopting resources managed by another product.
+
+The `-converted` suffix keeps a converted dashboard from colliding with a v1beta1 dashboard that has the name of the
+legacy dashboard. When the dashboard JSON sets `uid`, both dashboards write the same dashboard in Grafana. After you
+publish a v1beta1 dashboard of your own, delete the legacy dashboard first, and then delete its `-converted` copy.
+Grafana Operator can remove the dashboard from Grafana when the copy is deleted, and restores it on the next
+synchronization of the remaining dashboard.
+
+A legacy dashboard name longer than 243 characters cannot be converted, because the converted name exceeds the
+Kubernetes limit of 253 characters. The converter logs the rejected write.
+
+Builds before the suffix named the converted dashboard like the legacy dashboard. The converter does not update or
+delete those copies, so each one diverges from its `-converted` replacement while both write the same dashboard in
+Grafana. Delete the old copies after the upgrade. This command deletes the converted dashboards without the suffix in
+one namespace:
+
+```bash
+kubectl get grafanadashboards.grafana.integreatly.org -n <namespace> -o name \
+  -l app.kubernetes.io/managed-by-operator=grafana-operator-converter \
+  | grep -v -- '-converted$' | xargs -r kubectl delete -n <namespace>
+```
 
 No converter release predates this ownership marker. If you deployed an unreleased build that created unmarked copies,
 verify their ownership before adding the marker manually. Unmarked resources are otherwise treated as external.

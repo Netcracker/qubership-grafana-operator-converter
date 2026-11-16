@@ -63,6 +63,22 @@ func TestConvertGrafanaDashboardMarksManagedCopyWithoutMutatingSource(t *testing
 	assert.Equal(t, original, source)
 }
 
+func TestConvertedDashboardName(t *testing.T) {
+	for sourceName, convertedName := range map[string]string{
+		"sample":           "sample-converted",
+		"sample-converted": "sample-converted-converted",
+	} {
+		assert.Equal(t, convertedName, convertedDashboardName(sourceName))
+		assert.Equal(t, sourceName, sourceDashboardName(convertedName))
+	}
+	// A copy from a build that predates the suffix maps to the source with the same name.
+	assert.Equal(t, "sample", sourceDashboardName("sample"))
+
+	source := &v1alpha1.GrafanaDashboard{ObjectMeta: metav1.ObjectMeta{Name: "sample", Namespace: "product-a"}}
+	controller := &ConverterController{log: logr.Discard()}
+	assert.Equal(t, "sample-converted", controller.convertGrafanaDashboard(source).Name)
+}
+
 func TestConvertGrafanaDashboardHandlesNilMetadata(t *testing.T) {
 	source := &v1alpha1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
@@ -107,7 +123,7 @@ func TestConvertGrafanaDashboardAddsSourceOwnerReferenceWhenDeletionEnabled(t *t
 func TestUpdateGrafanaDashboardReconcilesMetadata(t *testing.T) {
 	existing := &v1beta1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "sample-dashboard",
+			Name:      "sample-dashboard-converted",
 			Namespace: "product-a",
 			Labels: map[string]string{
 				converterManagedLabel: converterManagedValue,
@@ -127,7 +143,7 @@ func TestUpdateGrafanaDashboardReconcilesMetadata(t *testing.T) {
 	}
 	oldSource := &v1alpha1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        existing.Name,
+			Name:        sourceDashboardName(existing.Name),
 			Namespace:   existing.Namespace,
 			UID:         types.UID("source-uid"),
 			Labels:      map[string]string{"obsolete": "remove-me"},
@@ -168,7 +184,7 @@ func TestUpdateGrafanaDashboardReconcilesMetadata(t *testing.T) {
 func TestUpdateGrafanaDashboardRefreshesSourceIdentityAfterRecreation(t *testing.T) {
 	existing := &v1beta1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "sample-dashboard",
+			Name:      "sample-dashboard-converted",
 			Namespace: "product-a",
 			Labels:    map[string]string{converterManagedLabel: converterManagedValue},
 			OwnerReferences: []metav1.OwnerReference{{
@@ -182,7 +198,7 @@ func TestUpdateGrafanaDashboardRefreshesSourceIdentityAfterRecreation(t *testing
 	}
 	oldSource := &v1alpha1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      existing.Name,
+			Name:      sourceDashboardName(existing.Name),
 			Namespace: existing.Namespace,
 			UID:       types.UID("old-source-uid"),
 		},
@@ -278,11 +294,11 @@ func TestConvertGrafanaNotificationChannelMarksManagedCopyWithoutMutatingSource(
 
 func TestReconcileGrafanaDashboardDoesNotAdoptUnmarkedCollision(t *testing.T) {
 	existing := &v1beta1.GrafanaDashboard{
-		ObjectMeta: metav1.ObjectMeta{Name: "sample-dashboard", Namespace: "product-a"},
+		ObjectMeta: metav1.ObjectMeta{Name: "sample-dashboard-converted", Namespace: "product-a"},
 		Spec:       v1beta1.GrafanaDashboardSpec{Json: "foreign"},
 	}
 	source := &v1alpha1.GrafanaDashboard{
-		ObjectMeta: metav1.ObjectMeta{Name: existing.Name, Namespace: existing.Namespace, UID: types.UID("source-uid")},
+		ObjectMeta: metav1.ObjectMeta{Name: sourceDashboardName(existing.Name), Namespace: existing.Namespace, UID: types.UID("source-uid")},
 		Spec:       v1alpha1.GrafanaDashboardSpec{Json: "converted"},
 	}
 	alphaClient := v1alpha1fake.NewSimpleClientset(source)
@@ -304,14 +320,14 @@ func TestReconcileGrafanaDashboardDoesNotAdoptUnmarkedCollision(t *testing.T) {
 func TestReconcileGrafanaDashboardUpdatesMarkedCopy(t *testing.T) {
 	existing := &v1beta1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "sample-dashboard",
+			Name:      "sample-dashboard-converted",
 			Namespace: "product-a",
 			Labels:    map[string]string{converterManagedLabel: converterManagedValue},
 		},
 		Spec: v1beta1.GrafanaDashboardSpec{Json: "old"},
 	}
 	source := &v1alpha1.GrafanaDashboard{
-		ObjectMeta: metav1.ObjectMeta{Name: existing.Name, Namespace: existing.Namespace, UID: types.UID("source-uid")},
+		ObjectMeta: metav1.ObjectMeta{Name: sourceDashboardName(existing.Name), Namespace: existing.Namespace, UID: types.UID("source-uid")},
 		Spec:       v1alpha1.GrafanaDashboardSpec{Json: "new"},
 	}
 	alphaClient := v1alpha1fake.NewSimpleClientset(source)
@@ -331,7 +347,7 @@ func TestReconcileGrafanaDashboardUpdatesMarkedCopy(t *testing.T) {
 func TestReconcileGrafanaDashboardReturnsUpdateError(t *testing.T) {
 	existing := &v1beta1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "sample-dashboard",
+			Name:      "sample-dashboard-converted",
 			Namespace: "product-a",
 			Labels:    map[string]string{converterManagedLabel: converterManagedValue},
 		},
@@ -342,7 +358,7 @@ func TestReconcileGrafanaDashboardReturnsUpdateError(t *testing.T) {
 		return true, nil, errors.New("API update failed")
 	})
 	source := &v1alpha1.GrafanaDashboard{
-		ObjectMeta: metav1.ObjectMeta{Name: existing.Name, Namespace: existing.Namespace, UID: types.UID("source-uid")},
+		ObjectMeta: metav1.ObjectMeta{Name: sourceDashboardName(existing.Name), Namespace: existing.Namespace, UID: types.UID("source-uid")},
 		Spec:       v1alpha1.GrafanaDashboardSpec{Json: "new"},
 	}
 	alphaClient := v1alpha1fake.NewSimpleClientset(source)
