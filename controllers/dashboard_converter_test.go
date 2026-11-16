@@ -68,8 +68,8 @@ func TestConvertedDashboardName(t *testing.T) {
 		"sample":           "sample-converted",
 		"sample-converted": "sample-converted-converted",
 	} {
-		assert.Equal(t, convertedName, convertedDashboardName(sourceName))
-		assert.Equal(t, sourceName, sourceDashboardName(convertedName))
+		assert.Equal(t, convertedName, convertedDashboardName(sourceName), "convertedDashboardName(%q)", sourceName)
+		assert.Equal(t, sourceName, sourceDashboardName(convertedName), "sourceDashboardName(%q)", convertedName)
 	}
 	// A copy from a build that predates the suffix maps to the source with the same name.
 	assert.Equal(t, "sample", sourceDashboardName("sample"))
