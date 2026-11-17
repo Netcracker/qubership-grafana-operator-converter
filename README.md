@@ -54,6 +54,8 @@ synchronization of the remaining dashboard.
 A legacy dashboard name longer than 243 characters cannot be converted, because the converted name exceeds the
 Kubernetes limit of 253 characters. The converter logs the rejected write.
 
+Rolling back to a build without the suffix is not supported.
+
 Builds before the suffix named the converted dashboard like the legacy dashboard. The converter does not update or
 delete those copies, so each one diverges from its `-converted` replacement while both write the same dashboard in
 Grafana. Delete the old copies after the upgrade. This command deletes the converted dashboards without the suffix in
