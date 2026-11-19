@@ -36,7 +36,7 @@ func TestReconcileDashboardResolvesGzipConfigMapReference(t *testing.T) {
 
 	require.NoError(t, err)
 	target, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-		context.Background(), source.Name, metav1.GetOptions{},
+		context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 	)
 	require.NoError(t, err)
 	assert.Equal(t, compressed, target.Spec.GzipJson)
@@ -83,7 +83,7 @@ func TestGzipConfigMapReferenceErrorsWaitForConfigMapEvent(t *testing.T) {
 			assert.True(t, isPermanentDashboardError(err))
 			assert.Contains(t, err.Error(), test.errorMatch)
 			_, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-				context.Background(), source.Name, metav1.GetOptions{},
+				context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 			)
 			assert.True(t, apierrs.IsNotFound(getErr))
 		})
@@ -200,7 +200,7 @@ func TestGzipConfigMapReferenceIsRejectedWhileResolutionIsDisabled(t *testing.T)
 	assert.Contains(t, err.Error(), "grafana.converter.resolveGzipConfigMapRef")
 	assert.Empty(t, coreClient.Actions())
 	_, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-		context.Background(), source.Name, metav1.GetOptions{},
+		context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 	)
 	assert.True(t, apierrs.IsNotFound(getErr))
 }
@@ -281,7 +281,7 @@ func TestConfigMapEventReconcilesUpdatesWithoutSourceEvent(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		target, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-			context.Background(), source.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 		)
 		return getErr == nil && bytes.Equal(target.Spec.GzipJson, newCompressed)
 	}, 2*time.Second, 10*time.Millisecond)

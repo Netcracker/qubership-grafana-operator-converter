@@ -11,7 +11,23 @@ import (
 const (
 	managedByOperatorLabelKey   = "app.kubernetes.io/managed-by-operator"
 	managedByOperatorLabelValue = "grafana-operator-converter"
+	// convertedDashboardNameSuffix marks a v1beta1 GrafanaDashboard as a converter copy, so
+	// its name cannot collide with a v1beta1 dashboard that another owner names like the source.
+	convertedDashboardNameSuffix = "-converted"
 )
+
+// convertedDashboardName returns the name of the v1beta1 GrafanaDashboard converted from the
+// legacy dashboard sourceName. A source name longer than 243 characters yields a name the API
+// server rejects, and the reconciler reports that as a permanent error.
+func convertedDashboardName(sourceName string) string {
+	return sourceName + convertedDashboardNameSuffix
+}
+
+// sourceDashboardName returns the legacy dashboard name for a converted dashboard name.
+// A name without the suffix, such as a copy from an earlier converter build, is returned as is.
+func sourceDashboardName(convertedName string) string {
+	return strings.TrimSuffix(convertedName, convertedDashboardNameSuffix)
+}
 
 func convertedObjectMeta(source metav1.Object, name string) metav1.ObjectMeta {
 	labels := maps.Clone(source.GetLabels())
@@ -57,7 +73,7 @@ func convertedGrafanaDashboardMeta(source metav1.Object, deleteTargetOnSourceDel
 
 	metadata := metav1.ObjectMeta{
 		Namespace:   source.GetNamespace(),
-		Name:        source.GetName(),
+		Name:        convertedDashboardName(source.GetName()),
 		Labels:      labels,
 		Annotations: annotations,
 	}
