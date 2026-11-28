@@ -48,7 +48,7 @@ func TestDashboardWorkerRetriesTransientCreateError(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		_, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-			context.Background(), source.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 		)
 		return err == nil
 	}, time.Second, 5*time.Millisecond)
@@ -74,7 +74,7 @@ func TestDashboardWorkerRetriesTransientUpdateError(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		actual, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-			context.Background(), source.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 		)
 		return err == nil && actual.Spec.Json == "desired"
 	}, time.Second, 5*time.Millisecond)
@@ -158,7 +158,7 @@ func TestDeletingSourceDoesNotRecreateDeletedTarget(t *testing.T) {
 	}))
 
 	_, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-		context.Background(), source.Name, metav1.GetOptions{},
+		context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 	)
 	assert.True(t, apierrs.IsNotFound(err))
 }
@@ -183,7 +183,7 @@ func TestPermanentSourceErrorWaitsForSourceChangeAndDoesNotBlockAnotherDashboard
 
 	require.Eventually(t, func() bool {
 		_, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(validSource.Namespace).Get(
-			context.Background(), validSource.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(validSource.Name), metav1.GetOptions{},
 		)
 		return err == nil
 	}, time.Second, 5*time.Millisecond)
@@ -201,7 +201,7 @@ func TestPermanentSourceErrorWaitsForSourceChangeAndDoesNotBlockAnotherDashboard
 
 	require.Eventually(t, func() bool {
 		_, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(updatedSource.Namespace).Get(
-			context.Background(), updatedSource.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(updatedSource.Name), metav1.GetOptions{},
 		)
 		return getErr == nil
 	}, time.Second, 5*time.Millisecond)
@@ -400,7 +400,7 @@ func TestDeselectedDashboard(t *testing.T) {
 		}))
 
 		actual, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-			context.Background(), source.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 		)
 		require.NoError(t, err)
 		assert.Equal(t, "desired", actual.Spec.Json)
@@ -423,7 +423,7 @@ func TestDeselectedDashboard(t *testing.T) {
 		}))
 
 		_, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-			context.Background(), source.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 		)
 		if err == nil || !apierrs.IsNotFound(err) {
 			t.Errorf("get target GrafanaDashboard %s/%s = %v, want NotFound", source.Namespace, source.Name, err)
@@ -446,7 +446,7 @@ func TestDeselectedDashboard(t *testing.T) {
 		}))
 
 		_, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-			context.Background(), source.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 		)
 		if err == nil || !apierrs.IsNotFound(err) {
 			t.Errorf("get target GrafanaDashboard %s/%s = %v, want NotFound", source.Namespace, source.Name, err)
@@ -474,7 +474,7 @@ func TestDeselectedDashboard(t *testing.T) {
 			t.Errorf("reconcileDashboard(%s) error = %v, want a permanent error", source.Name, err)
 		}
 		actual, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-			context.Background(), source.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 		)
 		require.NoError(t, getErr)
 		assert.Equal(t, target, actual)
@@ -499,7 +499,7 @@ func TestDeselectedDashboard(t *testing.T) {
 			t.Errorf("reconcileDashboard(%s) error = %v, want a permanent error", source.Name, err)
 		}
 		actual, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-			context.Background(), source.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 		)
 		require.NoError(t, getErr)
 		assert.Equal(t, target, actual)
@@ -538,7 +538,7 @@ func TestDeselectedDashboard(t *testing.T) {
 		alphaClient := v1alpha1fake.NewSimpleClientset(source)
 		betaClient := v1beta1fake.NewSimpleClientset(target)
 		stored, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-			context.Background(), source.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 		)
 		require.NoError(t, err)
 		betaClient.PrependReactor("delete", "grafanadashboards", func(action k8stesting.Action) (bool, runtime.Object, error) {
@@ -563,7 +563,7 @@ func TestDeselectedDashboard(t *testing.T) {
 			t.Errorf("reconcileDashboard(%s) error = %v, want a retryable conflict", source.Name, err)
 		}
 		unchanged, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-			context.Background(), source.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 		)
 		require.NoError(t, getErr)
 		assert.Equal(t, stored.UID, unchanged.UID)
@@ -583,7 +583,7 @@ func TestDeselectedDashboard(t *testing.T) {
 			t.Errorf("reconcileDashboard(%s) error = %v, want a permanent error", source.Name, err)
 		}
 		actual, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-			context.Background(), source.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 		)
 		require.NoError(t, getErr)
 		assert.Equal(t, types.UID("replacement-sample"), actual.UID)
@@ -613,7 +613,7 @@ func TestDeselectedDashboard(t *testing.T) {
 		}))
 
 		_, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-			context.Background(), source.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 		)
 		if err == nil || !apierrs.IsNotFound(err) {
 			t.Errorf("get target GrafanaDashboard %s/%s = %v, want NotFound", source.Namespace, source.Name, err)
@@ -651,7 +651,7 @@ func TestDeselectedDashboard(t *testing.T) {
 			t.Errorf("reconcileDashboard(%s) error = %v, want a retryable error", source.Name, err)
 		}
 		actual, getErr := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-			context.Background(), source.Name, metav1.GetOptions{},
+			context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 		)
 		require.NoError(t, getErr)
 		assert.Equal(t, target, actual)
@@ -677,7 +677,7 @@ func TestRecreatedDashboard(t *testing.T) {
 		Name:      source.Name,
 	}))
 	_, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-		context.Background(), source.Name, metav1.GetOptions{},
+		context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 	)
 	if err == nil || !apierrs.IsNotFound(err) {
 		t.Fatalf("get target GrafanaDashboard %s/%s = %v, want NotFound", source.Namespace, source.Name, err)
@@ -694,7 +694,7 @@ func TestRecreatedDashboard(t *testing.T) {
 	}))
 
 	actual, err := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace).Get(
-		context.Background(), source.Name, metav1.GetOptions{},
+		context.Background(), convertedDashboardName(source.Name), metav1.GetOptions{},
 	)
 	require.NoError(t, err)
 	assert.Equal(t, instanceSelector, actual.Spec.InstanceSelector)
@@ -778,6 +778,30 @@ func startDashboardTestWorker(t *testing.T, controller *ConverterController) {
 	})
 }
 
+func TestReconcileDashboardLeavesDashboardNamedLikeSourceUntouched(t *testing.T) {
+	source := testSourceDashboard("sample", "source-uid", "desired")
+	foreign := &v1beta1.GrafanaDashboard{
+		ObjectMeta: metav1.ObjectMeta{Name: source.Name, Namespace: source.Namespace},
+		Spec:       v1beta1.GrafanaDashboardSpec{Json: "foreign"},
+	}
+	betaClient := v1beta1fake.NewSimpleClientset(foreign)
+	controller := newDashboardTestController(v1alpha1fake.NewSimpleClientset(source), betaClient)
+
+	require.NoError(t, controller.reconcileDashboard(context.Background(), dashboardQueueItem{
+		Namespace: source.Namespace,
+		Name:      source.Name,
+	}))
+
+	targets := betaClient.GrafanaIntegreatlyV1beta1().GrafanaDashboards(source.Namespace)
+	converted, err := targets.Get(context.Background(), "sample-converted", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "desired", converted.Spec.Json)
+	assert.Equal(t, source.Name, sourceDashboardName(converted.Name))
+	untouched, err := targets.Get(context.Background(), source.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "foreign", untouched.Spec.Json)
+}
+
 func testSourceDashboard(name string, uid types.UID, json string) *v1alpha1.GrafanaDashboard {
 	return &v1alpha1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "product-a", UID: uid},
@@ -788,7 +812,7 @@ func testSourceDashboard(name string, uid types.UID, json string) *v1alpha1.Graf
 func testTargetDashboard(name, json string) *v1beta1.GrafanaDashboard {
 	return &v1beta1.GrafanaDashboard{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
+			Name:      convertedDashboardName(name),
 			Namespace: "product-a",
 			UID:       types.UID(fmt.Sprintf("target-%s", name)),
 			Labels:    map[string]string{managedByOperatorLabelKey: managedByOperatorLabelValue},
